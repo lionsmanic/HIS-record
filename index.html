@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>病歷文書草稿工作台｜Gyn-Onc Note Drafter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
   --paper:#FAFAF7; --field:#FFFFFF; --ink:#19232A; --muted:#6B7680;
@@ -59,6 +61,18 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
 .pastebox{white-space:pre;overflow-wrap:normal;overflow-x:auto;tab-size:4;-moz-tab-size:4;
   font-family:var(--mono);font-size:12.5px;line-height:1.6}
 .pastebox.wrapon{white-space:pre-wrap;overflow-wrap:break-word;overflow-x:hidden}
+.drop{border:1px dashed var(--rule-strong);background:var(--field);padding:14px;text-align:center;
+  cursor:pointer;color:var(--muted);font-size:12px;border-radius:2px;transition:.12s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.drop b{display:block;color:var(--ink);font-size:13px;font-weight:600;margin-bottom:3px}
+.files{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:flex;align-items:center;gap:6px;border:1px solid var(--rule-strong);background:var(--field);
+  padding:4px 6px 4px 9px;font-size:11.5px;border-radius:2px;max-width:100%}
+.chip .nm{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip .sz{color:var(--muted);font-family:var(--mono);font-size:10.5px}
+.chip button{border:none;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 3px;line-height:1}
+.chip button:hover{color:var(--danger)}
+.chip.bad{border-color:var(--danger);color:var(--danger)}
 .editor{position:fixed;inset:0;background:rgba(25,35,42,.5);z-index:60;display:none;padding:20px}
 .editor.on{display:flex}
 .editor .panel{background:var(--field);border:1px solid var(--rule-strong);width:100%;display:flex;flex-direction:column}
@@ -212,6 +226,18 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
       <textarea id="src_all" class="pastebox" rows="26" data-src="本次住院相關資料 (Current records)"
         placeholder="生日、門診／急診紀錄、檢驗值、影像與病理報告、住院 note、醫囑與給藥、手術紀錄、會診回覆、交班事項…順序不拘，貼進來就好。"></textarea>
     </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>附加檔案</legend>
+    <div class="hint">Excel／CSV、Word、PDF、圖片、文字檔都可以。適合直接丟檢驗值表、報告或掃描的病歷頁。</div>
+    <div class="drop" id="drop">
+      <b>點此選擇，或把檔案拖進來</b>
+      .xlsx .xls .csv · .docx · .pdf · .txt .md · .png .jpg
+      <input type="file" id="fileinput" multiple hidden
+        accept=".xlsx,.xls,.xlsm,.csv,.tsv,.docx,.pdf,.txt,.md,.json,.log,image/*">
+    </div>
+    <div class="files" id="filelist"></div>
   </fieldset>
 
   <fieldset>
@@ -411,6 +437,108 @@ edText.addEventListener("input",()=>$("#ed-count").textContent=edText.value.leng
 edBox.addEventListener("click",e=>{if(e.target===edBox) closeEditor();});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&edBox.classList.contains("on")) closeEditor();});
 
+/* ---------- 附加檔案 ---------- */
+const FILES=[];
+const kindOf=f=>{
+  const n=(f.name||"").toLowerCase(), t=f.type||"";
+  if(t.startsWith("image/")||/\.(jpe?g|png|gif|webp|bmp)$/.test(n)) return "image";
+  if(t==="application/pdf"||n.endsWith(".pdf")) return "pdf";
+  if(n.endsWith(".docx")) return "docx";
+  if(n.endsWith(".doc")) return "doc-legacy";
+  if(/\.(xlsx|xls|xlsm|csv|tsv)$/.test(n)||t.includes("spreadsheetml")||t==="application/vnd.ms-excel") return "excel";
+  if(t.startsWith("text/")||/\.(txt|md|json|log|rtf)$/.test(n)) return "text";
+  return "unknown";
+};
+function readFile(file){
+  return new Promise((res,rej)=>{
+    const kind=kindOf(file);
+    if(kind==="unknown") return rej(new Error("不支援的格式"));
+    if(kind==="doc-legacy") return rej(new Error("舊版 .doc 請先另存成 .docx 或 PDF"));
+
+    if(kind==="docx"){
+      if(typeof mammoth==="undefined") return rej(new Error("Word 解析元件未載入，請重新整理"));
+      const r=new FileReader();
+      r.onload=e=>mammoth.extractRawText({arrayBuffer:e.target.result})
+        .then(o=>{const t=(o.value||"").trim(); t?res({kind:"text",name:file.name,text:t}):rej(new Error("沒有可讀取的文字"));})
+        .catch(err=>rej(new Error("Word 解析失敗："+err.message)));
+      r.onerror=()=>rej(new Error("讀取失敗"));
+      r.readAsArrayBuffer(file); return;
+    }
+    if(kind==="excel"){
+      if(typeof XLSX==="undefined") return rej(new Error("Excel 解析元件未載入，請重新整理"));
+      const r=new FileReader();
+      r.onload=e=>{
+        try{
+          const wb=XLSX.read(e.target.result,{type:"array"});
+          let out="";
+          wb.SheetNames.forEach(sn=>{
+            const csv=XLSX.utils.sheet_to_csv(wb.Sheets[sn],{blankrows:false}).trim();
+            if(csv) out+=`【工作表：${sn}】\n${csv}\n\n`;
+          });
+          out=out.trim();
+          if(!out) return rej(new Error("沒有可讀取的內容"));
+          if(out.length>40000) out=out.slice(0,40000)+"\n…（表格過長已截斷）";
+          res({kind:"text",name:file.name,text:out,tag:"試算表"});
+        }catch(err){ rej(new Error("Excel 解析失敗："+err.message)); }
+      };
+      r.onerror=()=>rej(new Error("讀取失敗"));
+      r.readAsArrayBuffer(file); return;
+    }
+    if(kind==="text"){
+      const r=new FileReader();
+      r.onload=e=>{const t=sanitize(String(e.target.result||"")).trim(); t?res({kind:"text",name:file.name,text:t}):rej(new Error("空檔案"));};
+      r.onerror=()=>rej(new Error("讀取失敗"));
+      r.readAsText(file,"UTF-8"); return;
+    }
+    const r=new FileReader();
+    r.onload=e=>res({kind,name:file.name,size:file.size,
+      base64:String(e.target.result).split(",")[1],
+      mimeType:kind==="pdf"?"application/pdf":(file.type||"image/jpeg")});
+    r.onerror=()=>rej(new Error("讀取失敗"));
+    r.readAsDataURL(file);
+  });
+}
+function renderFiles(){
+  const box=$("#filelist");
+  box.innerHTML=FILES.map((f,i)=>{
+    const icon=f.kind==="pdf"?"PDF":f.kind==="image"?"IMG":(f.tag||"TXT");
+    const sz=f.kind==="text"?`${f.text.length} 字`:`${Math.round((f.size||0)/1024)} KB`;
+    return `<span class="chip"><span class="sz">${icon}</span><span class="nm">${f.name}</span><span class="sz">${sz}</span><button data-rm="${i}" title="移除">✕</button></span>`;
+  }).join("");
+  box.querySelectorAll("[data-rm]").forEach(b=>b.addEventListener("click",()=>{FILES.splice(+b.dataset.rm,1);renderFiles();}));
+}
+async function addFiles(list){
+  for(const file of list){
+    try{ FILES.push(await readFile(file)); }
+    catch(err){
+      $("#filelist").insertAdjacentHTML("beforeend",
+        `<span class="chip bad"><span class="nm">${file.name}</span><span class="sz">${err.message}</span></span>`);
+      continue;
+    }
+  }
+  renderFiles();
+}
+const drop=$("#drop"), fin=$("#fileinput");
+drop.addEventListener("click",()=>fin.click());
+fin.addEventListener("change",()=>{addFiles([...fin.files]);fin.value="";});
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>{if(e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]);});
+
+function fileParts(){
+  const parts=[];
+  FILES.forEach((f,i)=>{
+    const n=i+1;
+    if(f.kind==="text"){
+      parts.push({text:`\n[附件 ${n}：${f.name}${f.tag?"（"+f.tag+"）":""}]\n${f.text}\n[附件 ${n} 結束]`});
+    }else{
+      parts.push({text:`\n[附件 ${n}：${f.name}（${f.kind==="pdf"?"PDF":"影像"}）]`});
+      parts.push({inline_data:{mime_type:f.mimeType,data:f.base64}});
+    }
+  });
+  return parts;
+}
+
 /* ---------- context ---------- */
 const purposes=()=>[...document.querySelectorAll(".pp:checked")].map(c=>c.value);
 const line=(l,v)=>v&&String(v).trim()?`${l}: ${String(v).trim()}\n`:"";
@@ -480,6 +608,19 @@ const DX_FORMAT=`診斷條列格式（重要）：每一項診斷先寫病名與
    -> S/P packed RBC 2 units transfusion on 2026/08/27
 日期一律 yyyy/mm/dd；資料中沒有的日期寫 [date]，不可自行填。沒有相關治療的診斷就不加箭頭列。`;
 
+const PE_DEFAULT=`Physical examination 一律要寫出來，不可留白、不可寫 not documented：
+- 資料中有記載的異常照實寫，並寫在對應部位。
+- 沒有記載的部位，直接草擬該臨床情境下的預設字眼，例如
+  General: conscious and alert, afebrile appearance, no acute distress
+  Chest: symmetric expansion, clear breathing sounds bilaterally, no rales or wheezing
+  Heart: regular heart beats without murmur
+  Abdomen: soft and flat, normoactive bowel sounds, no tenderness or rebounding pain
+  （術後）Wound: dressing dry and clean, no discharge, no dehiscence or surrounding erythema
+  （有引流管）Drain: [amount] mL serosanguinous discharge, no active bleeding
+  Extremities: freely movable, no pitting edema, no calf tenderness
+- 生命徵象與可量化數值一律留 [BT/PR/RR/BP]、[amount] 等方括號讓醫師填。
+- 預設字眼須配合本次住院目的（術後、化療後 nadir、感染控制）調整，不可寫出與已知異常矛盾的正常描述。`;
+
 const DOCS={
 admission:{label:"Admission Note",ins:`產出一份完整 ADMISSION NOTE，依序：
 Chief Complaint
@@ -522,32 +663,66 @@ soap:{label:"Progress Note",ins:`依下方「逐日產出範圍」，為每一�
 每份格式：
 第一行：yyyy/mm/dd  HD#n（若有手術則同行加 POD#n s/p <operation>；手術日當天為 POD#0）
 S: 病人主觀陳述（疼痛、食慾、排氣排便、噁心、發燒感）
-O: Vital signs [BT/PR/RR/BP]；I/O [ ]；身體檢查重點（腹部、傷口、引流管、下肢）；當日 lab／影像
+O: Vital signs [BT/PR/RR/BP]；I/O [ ]；physical examination（依下列預設字眼規則寫齊）；當日 lab／影像
 A: 問題導向評估，編號
 P: 對應每個 problem 的處置與當日 order 變更
-撰寫原則：
+Teaching Note: 兩到四點，針對「當天」的臨床情境寫給住院醫師與實習醫師的教學重點
+
+${PE_DEFAULT}
+
+Teaching Note 撰寫原則：
+- 內容必須扣住該日實際發生的事：POD#1 談早期下床與 Foley 移除的實證理由、POD#3 談 ileus 與 anastomotic leak 的辨識、
+  化療日談 premedication 與 hypersensitivity 處置、nadir 日談 febrile neutropenia 的定義與初始處置、
+  感染控制日談抗生素選擇與降階時機。
+- 每點一句到兩句，寫成可以教的重點，不是流水帳；可帶到婦癌相關的分期、guideline 原則或術式解剖考量。
+- 不可杜撰數據或引用不存在的文獻；不寫參考文獻編號。
+
+其他撰寫原則：
 - 該日有實際資料（progress note、醫囑、lab、會診）必須使用實際資料，不得被範本蓋過。
 - 沒有資料的日期，依本次住院目的與術式（含 approach）的常規進程寫成待填草稿：飲食推進、下床活動、Foley 與 drain 移除時機、止痛降階、抗生素天數、化療給藥與 nadir 追蹤；所有數值一律留 [ ]。
 - 開腹與微創（laparoscopy／robotic／SP）恢復速度不同，須反映在飲食與活動進程。
 - 標記為出院日的那一天，P 段必須寫出院決策：Condition stable, discharge today、出院用藥、拆線與傷口照護、OPD F/U 日期與下次治療安排、warning signs。
-- 每份 20 行以內，不加任何註解。`},
+- 每份 SOAP 本體 20 行以內，Teaching Note 另計。`},
 
-weekly:{label:"Interval Summary",ins:`產出一份 INTERVAL / WEEKLY SUMMARY，僅涵蓋下方指定的期間（期間長度以指定為準，可能少於或多於七天）：
-Period covered（含住院天數區間、實際日期與總天數）
-Interval events（期間內主要事件：處置、發燒、併發症、會診、輸血、影像、化療給藥）
-Laboratory trend（挑臨床重要項目，以 日期: 數值 呈現趨勢；無資料留 [ ]）
-Current status（活動、飲食、疼痛、管路、抗生素第幾天）
-Assessment（問題導向，編號）
-Plan（後續處置，含出院規劃或下次治療時程）`},
+weekly:{label:"Interval Summary",ins:`產出一份 INTERVAL / WEEKLY SUMMARY，僅涵蓋下方指定的期間（期間長度以指定為準，可能少於或多於七天）。
+本文件的重點是「這段期間做了什麼」——重要處置、檢查、治療與其結果的敘述，不是逐日流水帳。
+
+Period covered: 住院天數區間、實際日期、總天數
+
+Significant Events and Interventions:
+  依時序敘述，每項寫成一段或一條，含日期、做了什麼、為什麼做、結果如何。涵蓋：
+  - 手術與侵入性處置（術式、approach、findings、EBL、併發症、管路置放與移除）
+  - 化學治療或標靶／免疫治療（regimen、cycle、劑量調整、premedication、輸注反應、毒性）
+  - 影像與診斷性檢查（CT／MRI／PET／內視鏡／切片）及其報告結論
+  - 抗生素與感染事件（發燒、培養結果、抗生素起訖與升降階）
+  - 輸血、營養支持、疼痛控制的重大調整
+  - 會診科別與其建議
+  各項若資料未載明結果，寫 [result pending]，不得自行判讀。
+
+Laboratory Data:
+  以「項目：日期 數值 → 日期 數值」的方式列出趨勢，優先列 CBC/differential、ANC、renal 與 liver function、
+  albumin、CRP、腫瘤指數（CA-125、CEA、CA19-9 等）、凝血功能、以及與本次問題相關的項目。
+  沒有的項目就不列，不要編造；有項目但缺值時寫 [ ]。
+
+Physical Examination:
+  寫出期間結束時（最近一次）的完整 PE，依下列預設字眼規則。
+
+${PE_DEFAULT}
+
+Assessment: 問題導向，編號
+Plan: 後續處置，含出院規劃或下次治療時程`},
 
 oncall:{label:"Off-service / Sign-out Note",ins:`產出交班摘要：
 Patient summary（一到兩句：年齡、診斷、分期、入院目的、目前住院第幾天／POD）
 Course to date（三到六點）
+Current physical examination（依下列預設字眼規則寫齊，不可省略）
 Active problems and current management
 Lines, drains, airway（無則 none）
 Code status / allergy（無資料 [ ]）
 Anticipated issues and what to do（寫成 if-then，例如 if fever > 38.3 → blood culture x2 + ...）
-To-do / pending results`},
+To-do / pending results
+
+${PE_DEFAULT}`},
 
 history:{label:"History 區塊",ins:`只產出以下段落，可直接貼入 HIS 各欄位：
 Past Medical History
@@ -571,7 +746,7 @@ Suggestion — 對應每個編號，寫具體處置與追蹤（檢查、藥物�
 };
 
 /* ---------- Gemini API ---------- */
-async function callGemini(system,user){
+async function callGemini(system,parts){
   const key=keyEl.value.trim();
   if(!key) throw new Error("尚未填入 Gemini API Key");
   const url=`https://generativelanguage.googleapis.com/v1beta/models/${modelEl.value}:generateContent?key=${encodeURIComponent(key)}`;
@@ -579,7 +754,7 @@ async function callGemini(system,user){
     method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
       system_instruction:{parts:[{text:system}]},
-      contents:[{role:"user",parts:[{text:user}]}],
+      contents:[{role:"user",parts}],
       generationConfig:{temperature:0.2,maxOutputTokens:8192}
     })
   });
@@ -659,9 +834,14 @@ document.querySelectorAll(".gen button").forEach(btn=>{
       extra=`\n=== 本次 summary 涵蓋期間 ===\n住院第 ${a} 天到第 ${b} 天（${fmt(addDays(s.adm,a-1))} – ${fmt(addDays(s.adm,b-1))}），共 ${span} 天\n`
         +`只整理這段期間的事件，之前的僅作為背景。若期間不足七天，標題與 Period covered 請照實寫出實際天數，不要寫成一整週。\n`;
     }
-    const el=card(title);
-    const user=caseBlock()+extra+sourceBlock()+"\n=== 本次任務 ===\n"+spec.ins;
-    try{finish(el,await callGemini(BASE,user));}catch(e){fail(el,e.message);}
+    const el=card(title+(FILES.length?`　+${FILES.length} 附件`:""));
+    const parts=[{text:caseBlock()+extra+sourceBlock()}];
+    if(FILES.length){
+      parts.push({text:"\n=== 附加檔案（與上方文字資料同等重要，請一併讀取）==="});
+      parts.push(...fileParts());
+    }
+    parts.push({text:"\n=== 本次任務 ===\n"+spec.ins});
+    try{finish(el,await callGemini(BASE,parts));}catch(e){fail(el,e.message);}
   });
 });
 
