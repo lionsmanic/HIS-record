@@ -233,11 +233,14 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
     </div>
 
     <div class="inline">
-      <span>Weekly：</span>
-      <select id="wk"><option value="">住院未滿一週</option></select>
+      <span>Weekly：住院第</span>
+      <input type="number" id="w_from" min="1" value="1">
+      <span>天 到 第</span>
+      <input type="number" id="w_to" min="1" value="7">
+      <span>天</span>
     </div>
     <div class="gen">
-      <button class="wide" data-doc="weekly" id="wkbtn" disabled><b>產生 weekly summary</b><i>滿七天自動可選</i></button>
+      <button class="wide" data-doc="weekly"><b>產生 weekly summary</b><i>任何天數都能生成，不必滿七天</i></button>
     </div>
 
     <div class="gen" style="margin-top:6px">
@@ -313,20 +316,14 @@ function refresh(){
   const s=state();
   const f=$("#d_from"),to=$("#d_to");
   if(s.los){ f.max=s.los; to.max=s.los; if(+to.value<1||+to.value>s.los) to.value=s.los; if(+f.value>s.los) f.value=1; }
-  const wk=$("#wk"), btn=$("#wkbtn"), prev=wk.value;
-  wk.innerHTML="";
-  const weeks=s.los?Math.floor(s.los/7):0;
-  if(weeks<1){ wk.innerHTML='<option value="">住院未滿一週</option>'; btn.disabled=true; }
-  else{
-    for(let i=1;i<=weeks;i++){
-      const a=addDays(s.adm,(i-1)*7), b=addDays(s.adm,i*7-1);
-      wk.insertAdjacentHTML("beforeend",`<option value="${i}">第 ${i} 週（第 ${(i-1)*7+1}–${i*7} 天，${fmt(a)}–${fmt(b)}）</option>`);
-    }
-    if(s.los%7) wk.insertAdjacentHTML("beforeend",`<option value="last">至今（第 1–${s.los} 天）</option>`);
-    wk.value=prev&&[...wk.options].some(o=>o.value===prev)?prev:String(weeks);
-    btn.disabled=false;
+  // weekly 預設帶入最近七天（不足七天就從第 1 天算起），使用者仍可自行改
+  const wf=$("#w_from"),wt=$("#w_to");
+  if(s.los && !wf.dataset.touched){
+    wt.value=s.los;
+    wf.value=Math.max(1,s.los-6);
   }
 }
+["w_from","w_to"].forEach(id=>$("#"+id).addEventListener("input",()=>$("#w_from").dataset.touched="1"));
 ["adm","dc","op_date"].forEach(id=>$("#"+id).addEventListener("change",refresh));
 document.querySelectorAll(".pp").forEach(cb=>cb.addEventListener("change",()=>{
   $("#"+cb.dataset.panel).classList.toggle("on",cb.checked); refresh();
@@ -535,13 +532,13 @@ P: 對應每個 problem 的處置與當日 order 變更
 - 標記為出院日的那一天，P 段必須寫出院決策：Condition stable, discharge today、出院用藥、拆線與傷口照護、OPD F/U 日期與下次治療安排、warning signs。
 - 每份 20 行以內，不加任何註解。`},
 
-weekly:{label:"Weekly Summary",ins:`產出一份 WEEKLY SUMMARY，僅涵蓋下方指定的期間：
-Period covered（含住院天數區間與日期）
-Interval events（本週主要事件：處置、發燒、併發症、會診、輸血、影像、化療給藥）
+weekly:{label:"Interval Summary",ins:`產出一份 INTERVAL / WEEKLY SUMMARY，僅涵蓋下方指定的期間（期間長度以指定為準，可能少於或多於七天）：
+Period covered（含住院天數區間、實際日期與總天數）
+Interval events（期間內主要事件：處置、發燒、併發症、會診、輸血、影像、化療給藥）
 Laboratory trend（挑臨床重要項目，以 日期: 數值 呈現趨勢；無資料留 [ ]）
 Current status（活動、飲食、疼痛、管路、抗生素第幾天）
 Assessment（問題導向，編號）
-Plan for coming week（含出院規劃或下次治療時程）`},
+Plan（後續處置，含出院規劃或下次治療時程）`},
 
 oncall:{label:"Off-service / Sign-out Note",ins:`產出交班摘要：
 Patient summary（一到兩句：年齡、診斷、分期、入院目的、目前住院第幾天／POD）
@@ -655,11 +652,12 @@ document.querySelectorAll(".gen button").forEach(btn=>{
       }
     }
     if(doc==="weekly"){
-      const v=$("#wk").value; if(!v){alert("住院未滿一週。");return;}
-      let a,b;
-      if(v==="last"){a=1;b=s.los;} else {a=(v-1)*7+1;b=v*7;}
+      if(!s.adm){alert("請先填入院日。");return;}
+      let a=Math.max(1,+$("#w_from").value||1), b=Math.max(a,+$("#w_to").value||a);
+      const span=b-a+1;
       title=`Weekly summary　第 ${a}–${b} 天`;
-      extra=`\n=== 本次 weekly 涵蓋期間 ===\n住院第 ${a} 天到第 ${b} 天（${fmt(addDays(s.adm,a-1))} – ${fmt(addDays(s.adm,b-1))}）\n只整理這段期間的事件，之前的僅作為背景。\n`;
+      extra=`\n=== 本次 summary 涵蓋期間 ===\n住院第 ${a} 天到第 ${b} 天（${fmt(addDays(s.adm,a-1))} – ${fmt(addDays(s.adm,b-1))}），共 ${span} 天\n`
+        +`只整理這段期間的事件，之前的僅作為背景。若期間不足七天，標題與 Period covered 請照實寫出實際天數，不要寫成一整週。\n`;
     }
     const el=card(title);
     const user=caseBlock()+extra+sourceBlock()+"\n=== 本次任務 ===\n"+spec.ins;
@@ -685,7 +683,9 @@ $("#clearAll").addEventListener("click",()=>{
   document.querySelectorAll(".rail select").forEach(e=>e.selectedIndex=0);
   document.querySelectorAll(".pp").forEach(c=>{c.checked=false;c.dispatchEvent(new Event("change"))});
   $("#prev_kind").value="auto";
-  $("#d_from").value=1;$("#d_to").value=1;refresh();
+  $("#d_from").value=1;$("#d_to").value=1;
+  $("#w_from").value=1;$("#w_to").value=7;delete $("#w_from").dataset.touched;
+  refresh();
 });
 refresh();
 </script>
