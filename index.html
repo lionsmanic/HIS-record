@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>病歷文書草稿工作台｜Gyn-Onc Note Drafter</title>
+<style>
+:root{
+  --paper:#FAFAF7; --field:#FFFFFF; --ink:#19232A; --muted:#6B7680;
+  --rule:#D6DAD5; --rule-strong:#A9B0AA;
+  --accent:#1F5F5B; --accent-soft:#E7EFEC;
+  --flag:#8A5A00; --flag-soft:#FBF3E2; --danger:#8C2F2F;
+  --mono:"SFMono-Regular",Consolas,"Roboto Mono","Noto Sans TC",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+header{border-bottom:1px solid var(--rule-strong);background:var(--field);padding:10px 18px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+header h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.01em}
+header h1 span{color:var(--muted);font-weight:400;margin-left:8px;font-size:13px}
+.spacer{flex:1}
+.keybox{display:flex;gap:6px;align-items:center}
+.keybox input,.keybox select{border:1px solid var(--rule-strong);background:var(--field);padding:5px 8px;border-radius:2px}
+.keybox input{width:190px}
+.keystate{font-size:12px;color:var(--muted);white-space:nowrap}
+.keystate.ok{color:var(--accent)}
+.wrap{display:grid;grid-template-columns:minmax(360px,430px) 1fr;min-height:calc(100vh - 49px)}
+.rail{border-right:1px solid var(--rule-strong);padding:16px 18px 60px;background:var(--paper)}
+.stage{padding:16px 22px 80px;background:#F4F5F2;min-width:0}
+fieldset{border:none;border-top:1px solid var(--rule);margin:0 0 18px;padding:14px 0 0}
+fieldset:first-of-type{border-top:none;padding-top:0}
+legend{padding:0;font-weight:600;font-size:13px;letter-spacing:.02em}
+.hint{color:var(--muted);font-size:12px;margin:2px 0 10px}
+label.f{display:block;margin-bottom:9px}
+label.f > span{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+input[type=text],input[type=date],input[type=number],select,textarea{width:100%;border:1px solid var(--rule-strong);background:var(--field);padding:6px 8px;border-radius:2px}
+textarea{resize:vertical;font-family:var(--mono);font-size:12.5px;line-height:1.5}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.row{display:flex;gap:10px}
+.row > *{flex:1}
+.purpose{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.purpose label{display:flex;gap:7px;align-items:center;border:1px solid var(--rule-strong);background:var(--field);padding:7px 9px;cursor:pointer;border-radius:2px}
+.purpose label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.purpose input{margin:0;accent-color:var(--accent)}
+.detail{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 12px;margin:0 0 10px;display:none}
+.detail.on{display:block}
+.detail h4{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--accent)}
+.srcbox{margin-bottom:12px}
+.srcbox > span{display:flex;align-items:baseline;gap:8px;font-size:12px;color:var(--muted);margin-bottom:3px}
+.srcbox .count{margin-left:auto;font-family:var(--mono);font-size:11px}
+.gen{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.gen button{border:1px solid var(--rule-strong);background:var(--field);padding:9px 8px;text-align:left;cursor:pointer;border-radius:2px;line-height:1.3}
+.gen button:hover:not(:disabled){border-color:var(--accent);background:var(--accent-soft)}
+.gen button:disabled{opacity:.45;cursor:not-allowed}
+.gen button b{display:block;font-size:12.5px;font-weight:600}
+.gen button i{font-style:normal;font-size:11px;color:var(--muted)}
+.gen .wide{grid-column:1/-1}
+.gen .primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.gen .primary i{color:#C6DAD6}
+.gen .primary:hover:not(:disabled){background:#18514D}
+.inline{display:flex;gap:6px;align-items:center;margin:10px 0 6px;font-size:12px;color:var(--muted)}
+.inline input[type=number]{width:64px}
+.inline select{flex:1}
+.mini{display:flex;gap:8px;margin-top:12px}
+.mini button{flex:1;border:1px solid var(--rule);background:transparent;color:var(--muted);padding:6px;cursor:pointer;font-size:12px;border-radius:2px}
+.mini button:hover{color:var(--ink);border-color:var(--rule-strong)}
+.empty{border:1px dashed var(--rule-strong);padding:26px;color:var(--muted);font-size:13px;background:var(--field)}
+.empty b{display:block;color:var(--ink);font-weight:600;margin-bottom:6px;font-size:14px}
+.doc{background:var(--field);border:1px solid var(--rule-strong);margin-bottom:14px}
+.doc > .head{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--rule)}
+.doc .head b{font-size:13px}
+.doc .head .meta{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.doc .head .tools{margin-left:auto;display:flex;gap:6px}
+.doc .head button{border:1px solid var(--rule-strong);background:var(--field);padding:4px 10px;cursor:pointer;font-size:12px;border-radius:2px}
+.doc .head button:hover{border-color:var(--accent);color:var(--accent)}
+.doc .head button.copied{background:var(--accent);border-color:var(--accent);color:#fff}
+.doc pre{margin:0;padding:14px 16px;font-family:var(--mono);font-size:12.5px;line-height:1.62;white-space:pre-wrap;word-break:break-word;max-height:640px;overflow:auto}
+.doc pre[contenteditable]:focus{outline:2px solid var(--accent);outline-offset:-2px}
+.doc.working pre{color:var(--muted)}
+.doc.err{border-color:var(--danger)}
+.doc.err pre{color:var(--danger)}
+.notice{border:1px solid #E2D3AE;background:var(--flag-soft);color:var(--flag);padding:9px 12px;font-size:12px;margin-bottom:14px}
+.notice b{font-weight:600}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--rule-strong);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2s}}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}.rail{border-right:none;border-bottom:1px solid var(--rule-strong)}.keybox input{width:140px}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>病歷文書草稿工作台<span>Gyn-Onc Note Drafter</span></h1>
+  <div class="spacer"></div>
+  <div class="keybox">
+    <input type="password" id="apikey" placeholder="Gemini API Key" autocomplete="off">
+    <select id="model">
+      <option value="gemini-2.5-flash">2.5 Flash</option>
+      <option value="gemini-2.5-pro">2.5 Pro</option>
+      <option value="gemini-2.5-flash-lite">2.5 Flash-Lite</option>
+    </select>
+    <span class="keystate" id="keystate">未設定金鑰</span>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="rail">
+
+  <fieldset>
+    <legend>住院日期</legend>
+    <div class="hint">只需日期。年齡、性別、主診斷、分期一律由下方貼上的資料推斷。</div>
+    <div class="row">
+      <label class="f"><span>入院日</span><input type="date" id="adm"></label>
+      <label class="f"><span>出院日（住院中留空）</span><input type="date" id="dc"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>此次住院目的</legend>
+    <div class="hint">可複選；勾選後展開細節。細節留空也可以，AI 會從資料裡找。</div>
+    <div class="purpose">
+      <label><input type="checkbox" class="pp" value="chemo" data-panel="p-chemo"> 化學治療</label>
+      <label><input type="checkbox" class="pp" value="surgery" data-panel="p-op"> 手術</label>
+      <label><input type="checkbox" class="pp" value="workup" data-panel="p-wu"> 檢查／診斷</label>
+      <label><input type="checkbox" class="pp" value="medical" data-panel="p-med"> 內科問題控制</label>
+    </div>
+
+    <div class="detail" id="p-chemo">
+      <h4>化學治療</h4>
+      <label class="f"><span>Regimen</span><input type="text" id="ct_reg" placeholder="Paclitaxel + Carboplatin"></label>
+      <div class="row">
+        <label class="f"><span>Cycle</span><input type="text" id="ct_cyc" placeholder="C4D1"></label>
+        <label class="f"><span>給藥日</span><input type="date" id="ct_date"></label>
+      </div>
+      <label class="f"><span>Vascular access</span>
+        <select id="ct_port"><option value="">—</option><option>Port-A</option><option>PICC</option><option>Peripheral IV</option></select></label>
+    </div>
+
+    <div class="detail" id="p-op">
+      <h4>手術</h4>
+      <label class="f"><span>術式 Operation</span><input type="text" id="op_name" placeholder="Debulking surgery: TAH + BSO + omentectomy + pelvic LND"></label>
+      <label class="f"><span>手術日</span><input type="date" id="op_date"></label>
+      <label class="f"><span>Approach</span>
+        <select id="op_route">
+          <option value="">—</option><option>Laparotomy</option>
+          <option>Conventional laparoscopy</option>
+          <option>Robotic-assisted (da Vinci Xi), multi-port</option>
+          <option>Single-port robotic (da Vinci SP)</option>
+          <option>Vaginal</option><option>Hysteroscopy / D&amp;C</option><option>HIFU</option>
+        </select></label>
+    </div>
+
+    <div class="detail" id="p-wu">
+      <h4>檢查／診斷</h4>
+      <label class="f"><span>安排項目</span><input type="text" id="wu_items" placeholder="CT-guided biopsy, PET-CT"></label>
+    </div>
+
+    <div class="detail" id="p-med">
+      <h4>內科問題控制</h4>
+      <label class="f"><span>問題</span><input type="text" id="md_prob" placeholder="Febrile neutropenia / cancer pain / malignant ascites"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>貼上原始資料</legend>
+    <div class="hint">建議附上生日與門診紀錄，AI 會據此推年齡與主診斷。</div>
+    <div class="srcbox">
+      <span>上次住院病歷<span class="count"></span></span>
+      <textarea id="src_prev" rows="6" data-src="上次住院病歷 (Previous admission records)"
+        placeholder="上次的 discharge summary、admission note、手術與病理報告…（用來接續病史與治療脈絡）"></textarea>
+    </div>
+    <div class="srcbox">
+      <span>本次資料（什麼都可以貼）<span class="count"></span></span>
+      <textarea id="src_all" rows="18" data-src="本次住院相關資料 (Current records)"
+        placeholder="生日、門診／急診紀錄、檢驗值、影像與病理報告、住院 note、醫囑與給藥、手術紀錄、會診回覆、交班事項…順序不拘，貼進來就好。"></textarea>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>產出文件</legend>
+    <div class="gen" id="gen">
+      <button class="wide primary" data-doc="admission"><b>Admission note</b><i>完整入院病歷（含 PE / ROS / impression / plan）</i></button>
+      <button class="wide primary" data-doc="discharge"><b>Discharge summary</b><i>出院診斷含 S/P 治療條列、hospital course、追蹤計畫</i></button>
+    </div>
+
+    <div class="inline">
+      <span>每日 SOAP：住院第</span>
+      <input type="number" id="d_from" min="1" value="1">
+      <span>天 到 第</span>
+      <input type="number" id="d_to" min="1" value="1">
+      <span>天</span>
+    </div>
+    <div class="gen">
+      <button class="wide" data-doc="soap"><b>產生逐日 progress note</b><i>自動標 HD#／POD#；最後一天若為出院日會寫出院 plan</i></button>
+    </div>
+
+    <div class="inline">
+      <span>Weekly：</span>
+      <select id="wk"><option value="">住院未滿一週</option></select>
+    </div>
+    <div class="gen">
+      <button class="wide" data-doc="weekly" id="wkbtn" disabled><b>產生 weekly summary</b><i>滿七天自動可選</i></button>
+    </div>
+
+    <div class="gen" style="margin-top:6px">
+      <button data-doc="oncall"><b>Off-service note</b><i>交班／轉床摘要</i></button>
+      <button data-doc="history"><b>History 區塊</b><i>PH / FH / OB-GYN / social</i></button>
+      <button data-doc="peros"><b>PE + ROS</b><i>預設模板＋異常帶入</i></button>
+      <button data-doc="impression"><b>Impression &amp; Suggestion</b><i>問題導向清單</i></button>
+    </div>
+
+    <div class="mini">
+      <button id="demo">載入示範資料</button>
+      <button id="clearAll">清空全部</button>
+    </div>
+  </fieldset>
+</div>
+
+<div class="stage">
+  <div class="notice">
+    產出一律是<b>草稿</b>：資料裡沒有的數值會留成 <code>[ ]</code>，請核對填寫後再簽署。頁面會把貼上的內容送到 Google Gemini API，請依醫院資安與個資規範使用。
+  </div>
+  <div id="out"></div>
+  <div class="empty" id="placeholder">
+    <b>還沒有產出</b>
+    填好入院日與住院目的、貼上手邊資料，再按一個文件類型。每份產出都可直接編輯，按「複製」貼進 HIS。
+  </div>
+</div>
+</div>
+
+<script>
+const store={get(k){try{return localStorage.getItem(k)||""}catch(e){return""}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const $=s=>document.querySelector(s);
+const keyEl=$("#apikey"),modelEl=$("#model"),keyState=$("#keystate");
+keyEl.value=store.get("geminiApiKey");
+modelEl.value=store.get("geminiModel")||"gemini-2.5-flash";
+function refreshKeyState(){
+  if(keyEl.value.trim()){keyState.textContent="金鑰已存在本機";keyState.className="keystate ok";}
+  else{keyState.textContent="未設定金鑰";keyState.className="keystate";}
+}
+keyEl.addEventListener("input",()=>{store.set("geminiApiKey",keyEl.value.trim());refreshKeyState()});
+modelEl.addEventListener("change",()=>store.set("geminiModel",modelEl.value));
+refreshKeyState();
+
+/* ---------- 日期 ---------- */
+const todayISO=new Date().toISOString().slice(0,10);
+const fmt=d=>d?d.replaceAll("-","/"):"";
+const diff=(a,b)=>(!a||!b)?null:Math.round((new Date(b)-new Date(a))/86400000);
+const addDays=(iso,n)=>new Date(new Date(iso).getTime()+n*86400000).toISOString().slice(0,10);
+function state(){
+  const adm=$("#adm").value, dc=$("#dc").value, op=$("#op_date").value;
+  const end=dc||todayISO;
+  const los=adm?(diff(adm,end)+1):null;
+  return {adm,dc,op,end,los,discharged:!!dc};
+}
+function dayInfo(n){
+  const s=state(); if(!s.adm) return {hd:n,date:"",pod:null,last:false};
+  const date=addDays(s.adm,n-1);
+  return {hd:n,date,pod:s.op?diff(s.op,date):null,last:s.discharged&&n===s.los};
+}
+function refresh(){
+  const s=state();
+  const f=$("#d_from"),to=$("#d_to");
+  if(s.los){ f.max=s.los; to.max=s.los; if(+to.value<1||+to.value>s.los) to.value=s.los; if(+f.value>s.los) f.value=1; }
+  const wk=$("#wk"), btn=$("#wkbtn"), prev=wk.value;
+  wk.innerHTML="";
+  const weeks=s.los?Math.floor(s.los/7):0;
+  if(weeks<1){ wk.innerHTML='<option value="">住院未滿一週</option>'; btn.disabled=true; }
+  else{
+    for(let i=1;i<=weeks;i++){
+      const a=addDays(s.adm,(i-1)*7), b=addDays(s.adm,i*7-1);
+      wk.insertAdjacentHTML("beforeend",`<option value="${i}">第 ${i} 週（第 ${(i-1)*7+1}–${i*7} 天，${fmt(a)}–${fmt(b)}）</option>`);
+    }
+    if(s.los%7) wk.insertAdjacentHTML("beforeend",`<option value="last">至今（第 1–${s.los} 天）</option>`);
+    wk.value=prev&&[...wk.options].some(o=>o.value===prev)?prev:String(weeks);
+    btn.disabled=false;
+  }
+}
+["adm","dc","op_date"].forEach(id=>$("#"+id).addEventListener("change",refresh));
+document.querySelectorAll(".pp").forEach(cb=>cb.addEventListener("change",()=>{
+  $("#"+cb.dataset.panel).classList.toggle("on",cb.checked); refresh();
+}));
+document.querySelectorAll(".srcbox textarea").forEach(ta=>{
+  const c=ta.closest(".srcbox").querySelector(".count");
+  const u=()=>c.textContent=ta.value.trim()?ta.value.trim().length+" 字":"";
+  ta.addEventListener("input",u); u();
+});
+
+/* ---------- context ---------- */
+const purposes=()=>[...document.querySelectorAll(".pp:checked")].map(c=>c.value);
+const line=(l,v)=>v&&String(v).trim()?`${l}: ${String(v).trim()}\n`:"";
+function caseBlock(){
+  const s=state(), p=purposes();
+  let t="=== 住院框架（使用者輸入，日期以此為準）===\n";
+  t+=line("Admission date",fmt(s.adm));
+  t+=s.discharged?line("Discharge date",fmt(s.dc)):`Discharge date: 尚未出院（still admitted，今日 ${fmt(todayISO)}）\n`;
+  if(s.los) t+=`本次住院為第 1 天到第 ${s.los} 天\n`;
+  const nm={chemo:"化學治療",surgery:"手術",workup:"檢查／診斷",medical:"內科問題控制"};
+  t+="Purpose of this admission: "+(p.length?p.map(x=>nm[x]).join(" + "):"[未指定，請自資料判斷]")+"\n";
+  if(p.includes("chemo")){t+="\n[化學治療]\n"+line("Regimen",$("#ct_reg").value)+line("Cycle",$("#ct_cyc").value)
+    +line("Chemotherapy date",fmt($("#ct_date").value))+line("Vascular access",$("#ct_port").value);}
+  if(p.includes("surgery")){t+="\n[手術]\n"+line("Operation",$("#op_name").value)+line("Operation date",fmt(s.op))
+    +line("Approach",$("#op_route").value);
+    if(s.op&&s.adm) t+=`手術日為住院第 ${diff(s.adm,s.op)+1} 天\n`;}
+  if(p.includes("workup")) t+="\n[檢查／診斷]\n"+line("Planned studies",$("#wu_items").value);
+  if(p.includes("medical")) t+="\n[內科問題控制]\n"+line("Active problem",$("#md_prob").value);
+  t+="\n未填的項目（年齡、性別、診斷、分期、術式、regimen 等）請從下方資料自行推斷：\n";
+  t+="- 年齡：由生日與入院日推算，寫成整數歲；找不到生日就留 [age]\n";
+  t+="- 主診斷與分期：由門診紀錄、病理報告或上次住院病歷推斷\n";
+  return t;
+}
+function sourceBlock(){
+  let t="";
+  document.querySelectorAll(".srcbox textarea").forEach(ta=>{
+    if(ta.value.trim()) t+=`\n=== ${ta.dataset.src} ===\n${ta.value.trim()}\n`;
+  });
+  return t||"\n（未提供原始文字資料）\n";
+}
+
+/* ---------- prompts ---------- */
+const BASE=`你是台灣醫學中心婦產部婦癌科的資深主治醫師，正在替住院病人整理病歷文書，供醫師審閱後貼入 HIS。
+
+嚴格規則：
+1. 只能使用我提供的資料。禁止杜撰任何數值、日期、藥名、劑量、檢驗值、病理結果或病人陳述。
+2. 資料裡沒有、但該欄位臨床上必須存在的項目，一律寫成方括號空格供醫師填寫，例如 [BT/PR/RR/BP]、[Hb]、[pathology pending]。寧可留空，不要推測。
+3. 年齡、性別、診斷、分期等基本資料由提供的資料推斷（生日＋入院日算年齡）；推不出來就留 [ ]。
+4. 可做臨床合理的整理、歸納與時序重建，但不得延伸出資料未支持的結論或療效判斷。
+5. 病歷正文以英文醫學書寫，使用台灣醫院慣用縮寫（s/p, TAH-BSO, C/T, POD, NPO, OPD, F/U）。
+6. 純文字輸出。不使用 markdown 的 #、*、\`\`\`、粗體或表格語法。條列用 1. 2. 3.。段落標題用首字大寫加冒號。
+7. 每行不超過約 90 字元。
+8. 直接輸出病歷內容，不要開場白、說明或結語。
+9.「上次住院病歷」只用來銜接病史、既往治療與 baseline，不可把上次的事件寫成本次住院發生的事。`;
+
+const DX_FORMAT=`診斷條列格式（重要）：每一項診斷先寫病名與分期，若該診斷底下有做過治療（手術、化療、標靶、放療、栓塞、引流等），
+在其下方以縮排箭頭逐條列出，每條含治療內容與日期：
+1. High grade serous ovarian carcinoma, FIGO IIIC
+   -> S/P exploratory laparotomy with interval debulking surgery (TAH + BSO + omentectomy
+      + pelvic and para-aortic lymphadenectomy) on 2026/08/26
+   -> S/P 3 cycles of neoadjuvant Paclitaxel + Carboplatin, from 2026/05/12 to 2026/07/28
+2. Anemia
+   -> S/P packed RBC 2 units transfusion on 2026/08/27
+日期一律 yyyy/mm/dd；資料中沒有的日期寫 [date]，不可自行填。沒有相關治療的診斷就不加箭頭列。`;
+
+const DOCS={
+admission:{label:"Admission Note",ins:`產出一份完整 ADMISSION NOTE，依序：
+Chief Complaint
+Present Illness（時序敘述本次入院前病程，含腫瘤診斷、分期、既往治療與 response）
+Past Medical History
+Past Surgical History
+Medications on Admission / Allergy
+Family History
+Personal & Social History（smoking, alcohol, betel nut, occupation）
+Obstetric & Gynecologic History（G_P_, menarche, LMP, menopausal status, Pap smear history）
+Review of Systems
+Physical Examination（Vital signs, General, HEENT, Neck, Chest, Heart, Abdomen, Pelvic/bimanual, Extremities, Neurologic）
+Laboratory and Imaging Data
+Impression
+Plan（依本次住院目的展開）
+第一行請寫：<年齡>-year-old <sex>, <主診斷簡述>
+Impression 段落採用下列診斷條列格式。
+${DX_FORMAT}`},
+
+discharge:{label:"Discharge Summary",ins:`產出一份 DISCHARGE SUMMARY：
+Admission Date / Discharge Date / Hospital Days
+Discharge Diagnosis
+Chief Complaint and Brief History
+Physical Examination on Admission
+Significant Laboratory and Imaging Findings（只列有臨床意義者，附日期）
+Hospital Course（重點段落：入院評估 → 主要處置（手術／化療／檢查／抗生素）→ 恢復經過 → 併發症有無 → 出院前狀態；有手術紀錄須整合 operation、findings、EBL、pathology）
+Operation and Pathology（無手術寫 Not applicable）
+Complications（無則 None during this admission）
+Condition at Discharge（ambulation, oral intake, wound, pain control, vital signs）
+Discharge Medications（只列資料中出現的藥，否則 [see order sheet]）
+Follow-up Plan and Instructions（OPD 回診、下次治療計畫、傷口與活動衛教、warning signs）
+
+Discharge Diagnosis 一段務必採用下列格式，本次住院所做的治療也要列進箭頭條列中：
+${DX_FORMAT}
+
+若尚未出院，最上方註明 "STILL ADMITTED — interim summary as of <今日>"，並將 Condition at Discharge 改為 Current Condition。`},
+
+soap:{label:"Progress Note",ins:`依下方「逐日產出範圍」，為每一天各產出一份 progress note。
+每份之間用一行 "----------------------------------------" 分隔。
+每份格式：
+第一行：yyyy/mm/dd  HD#n（若有手術則同行加 POD#n s/p <operation>；手術日當天為 POD#0）
+S: 病人主觀陳述（疼痛、食慾、排氣排便、噁心、發燒感）
+O: Vital signs [BT/PR/RR/BP]；I/O [ ]；身體檢查重點（腹部、傷口、引流管、下肢）；當日 lab／影像
+A: 問題導向評估，編號
+P: 對應每個 problem 的處置與當日 order 變更
+撰寫原則：
+- 該日有實際資料（progress note、醫囑、lab、會診）必須使用實際資料，不得被範本蓋過。
+- 沒有資料的日期，依本次住院目的與術式（含 approach）的常規進程寫成待填草稿：飲食推進、下床活動、Foley 與 drain 移除時機、止痛降階、抗生素天數、化療給藥與 nadir 追蹤；所有數值一律留 [ ]。
+- 開腹與微創（laparoscopy／robotic／SP）恢復速度不同，須反映在飲食與活動進程。
+- 標記為出院日的那一天，P 段必須寫出院決策：Condition stable, discharge today、出院用藥、拆線與傷口照護、OPD F/U 日期與下次治療安排、warning signs。
+- 每份 20 行以內，不加任何註解。`},
+
+weekly:{label:"Weekly Summary",ins:`產出一份 WEEKLY SUMMARY，僅涵蓋下方指定的期間：
+Period covered（含住院天數區間與日期）
+Interval events（本週主要事件：處置、發燒、併發症、會診、輸血、影像、化療給藥）
+Laboratory trend（挑臨床重要項目，以 日期: 數值 呈現趨勢；無資料留 [ ]）
+Current status（活動、飲食、疼痛、管路、抗生素第幾天）
+Assessment（問題導向，編號）
+Plan for coming week（含出院規劃或下次治療時程）`},
+
+oncall:{label:"Off-service / Sign-out Note",ins:`產出交班摘要：
+Patient summary（一到兩句：年齡、診斷、分期、入院目的、目前住院第幾天／POD）
+Course to date（三到六點）
+Active problems and current management
+Lines, drains, airway（無則 none）
+Code status / allergy（無資料 [ ]）
+Anticipated issues and what to do（寫成 if-then，例如 if fever > 38.3 → blood culture x2 + ...）
+To-do / pending results`},
+
+history:{label:"History 區塊",ins:`只產出以下段落，可直接貼入 HIS 各欄位：
+Past Medical History
+Past Surgical History
+Medications and Allergy
+Family History
+Personal and Social History
+Obstetric and Gynecologic History
+資料有提到的照實寫；婦癌病歷必問但資料未提的項目，列出項目名稱後接 [ ]（只有原始資料明確寫否認時才寫 denied）。
+Past Surgical History 若與腫瘤治療相關，採 "S/P <術式> on yyyy/mm/dd" 的寫法。`},
+
+peros:{label:"PE + Review of Systems",ins:`產出兩段：
+Review of Systems — 依 Constitutional, HEENT, Respiratory, Cardiovascular, Gastrointestinal, Genitourinary, Musculoskeletal, Neurologic, Hematologic, Psychiatric 條列。資料中的異常照實寫，其餘寫常見否認句。
+Physical Examination — Vital signs [ ], General appearance, HEENT, Neck, Lymph nodes, Chest/Lungs, Heart, Abdomen（含 surgical wound 與 ascites）, Pelvic examination（speculum 與 bimanual）, Extremities（含 leg edema）, Neurologic（含 chemotherapy-related peripheral neuropathy）。
+以婦癌住院病人的預設正常模板為底，資料中的異常覆蓋進對應欄位，異常處不得寫成正常。`},
+
+impression:{label:"Impression & Suggestion",ins:`只產出兩段：
+Impression — 編號問題清單，第一項為腫瘤診斷，其後依臨床重要性列共病與活動性問題。採用下列格式：
+${DX_FORMAT}
+Suggestion — 對應每個編號，寫具體處置與追蹤（檢查、藥物方向、會診、下一步治療決策點、需與病人及家屬討論事項）。`}
+};
+
+/* ---------- Gemini API ---------- */
+async function callGemini(system,user){
+  const key=keyEl.value.trim();
+  if(!key) throw new Error("尚未填入 Gemini API Key");
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/${modelEl.value}:generateContent?key=${encodeURIComponent(key)}`;
+  const res=await fetch(url,{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      system_instruction:{parts:[{text:system}]},
+      contents:[{role:"user",parts:[{text:user}]}],
+      generationConfig:{temperature:0.2,maxOutputTokens:8192}
+    })
+  });
+  if(!res.ok){
+    let d=""; try{ d=(await res.json()).error?.message||""; }catch(e){}
+    throw new Error(`HTTP ${res.status}${d?" — "+d:""}`);
+  }
+  const data=await res.json();
+  const cand=data.candidates?.[0];
+  if(!cand){
+    const b=data.promptFeedback?.blockReason;
+    throw new Error(b?`內容被安全機制阻擋（${b}）`:"模型未回傳內容");
+  }
+  const txt=(cand.content?.parts||[]).map(p=>p.text||"").join("").trim();
+  if(!txt) throw new Error(`模型回傳空白（finishReason: ${cand.finishReason||"unknown"}）`);
+  return txt;
+}
+
+/* ---------- 產出 ---------- */
+const out=$("#out"),ph=$("#placeholder");
+function card(title){
+  ph.style.display="none";
+  const el=document.createElement("div");
+  el.className="doc working";
+  el.innerHTML=`<div class="head"><b></b><span class="meta"></span><span class="tools"><span class="spin"></span></span></div><pre></pre>`;
+  el.querySelector("b").textContent=title;
+  el.querySelector(".meta").textContent=new Date().toLocaleTimeString("zh-TW",{hour12:false});
+  el.querySelector("pre").textContent="產生中…";
+  out.prepend(el); return el;
+}
+function finish(el,text){
+  el.classList.remove("working");
+  const pre=el.querySelector("pre");
+  pre.textContent=text; pre.setAttribute("contenteditable","true"); pre.setAttribute("spellcheck","false");
+  const tools=el.querySelector(".tools"); tools.innerHTML="";
+  const copy=document.createElement("button"); copy.textContent="複製";
+  copy.onclick=async()=>{
+    const t=pre.innerText;
+    try{await navigator.clipboard.writeText(t)}catch(e){
+      const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}
+    copy.textContent="已複製";copy.classList.add("copied");
+    setTimeout(()=>{copy.textContent="複製";copy.classList.remove("copied")},1400);
+  };
+  const del=document.createElement("button"); del.textContent="移除";
+  del.onclick=()=>{el.remove(); if(!out.children.length) ph.style.display="";};
+  tools.append(copy,del);
+}
+function fail(el,msg){
+  el.classList.remove("working");el.classList.add("err");
+  el.querySelector(".tools").innerHTML="";
+  el.querySelector("pre").textContent="產生失敗："+msg+
+    "\n\n檢查項目：\n1. Gemini API Key 是否正確、是否已啟用 Generative Language API\n2. 網路或瀏覽器擴充是否擋住請求\n3. 貼上的資料是否過長（可縮短逐日範圍或刪掉不相關段落）";
+}
+
+document.querySelectorAll(".gen button").forEach(btn=>{
+  if(!btn.dataset.doc) return;
+  btn.addEventListener("click",async()=>{
+    const s=state(), doc=btn.dataset.doc, spec=DOCS[doc];
+    let title=spec.label, extra="";
+
+    if(doc==="soap"){
+      if(!s.adm){alert("請先填入院日。");return;}
+      let a=Math.max(1,+$("#d_from").value||1), b=Math.max(a,+$("#d_to").value||a);
+      if(b>s.los && !confirm(`第 ${b} 天已超過目前住院天數（${s.los} 天），仍要產生嗎？`)) return;
+      title=`Progress note　第 ${a}–${b} 天`;
+      extra="\n=== 逐日產出範圍 ===\n";
+      for(let n=a;n<=b;n++){
+        const d=dayInfo(n);
+        extra+=`HD#${n}　${fmt(d.date)}`+(d.pod!==null?`　POD#${d.pod}`:"")+(d.last?"　← 出院日，P 段須寫出院決策":"")+"\n";
+      }
+    }
+    if(doc==="weekly"){
+      const v=$("#wk").value; if(!v){alert("住院未滿一週。");return;}
+      let a,b;
+      if(v==="last"){a=1;b=s.los;} else {a=(v-1)*7+1;b=v*7;}
+      title=`Weekly summary　第 ${a}–${b} 天`;
+      extra=`\n=== 本次 weekly 涵蓋期間 ===\n住院第 ${a} 天到第 ${b} 天（${fmt(addDays(s.adm,a-1))} – ${fmt(addDays(s.adm,b-1))}）\n只整理這段期間的事件，之前的僅作為背景。\n`;
+    }
+    const el=card(title);
+    const user=caseBlock()+extra+sourceBlock()+"\n=== 本次任務 ===\n"+spec.ins;
+    try{finish(el,await callGemini(BASE,user));}catch(e){fail(el,e.message);}
+  });
+});
+
+/* ---------- 示範 / 清空 ---------- */
+$("#demo").addEventListener("click",()=>{
+  const d=new Date(),iso=n=>new Date(d.getTime()-n*86400000).toISOString().slice(0,10);
+  $("#adm").value=iso(8);$("#dc").value="";
+  const op=document.querySelector('.pp[value="surgery"]');op.checked=true;op.dispatchEvent(new Event("change"));
+  $("#op_name").value="Interval debulking surgery: TAH + BSO + omentectomy + pelvic and para-aortic LND";
+  $("#op_date").value=iso(7);$("#op_route").value="Laparotomy";
+  $("#src_prev").value="2026/07 admission: 3rd cycle of Paclitaxel + Carboplatin, uneventful. CA-125 1820 -> 96. G2 peripheral neuropathy noted.";
+  $("#src_all").value="Female, birth date 1970/03/14.\nOPD 2026/08/20: HGSC ovarian cancer, FIGO IIIC, s/p 3 cycles neoadjuvant TC (2026/05/12, 06/09, 07/07). CT showed shrinkage of omental cake, interval debulking arranged.\nPre-OP labs: Hb 10.8, WBC 5200, Plt 218K, Cr 0.7, Alb 3.6, CA-125 96.\nOP note: optimal debulking, no gross residual, EBL 600 mL, frozen HGSC, final pathology pending.\nPOD#1: Foley removed, clear liquid diet, morphine PCA, Cefazolin 1g q8h.\nPOD#2: soft diet, ambulation with assistance, drain 60 mL serosanguinous.";
+  document.querySelectorAll(".srcbox textarea").forEach(t=>t.dispatchEvent(new Event("input")));
+  refresh();
+});
+$("#clearAll").addEventListener("click",()=>{
+  if(!confirm("清空所有輸入欄位？已產出的文件不會被刪除。"))return;
+  document.querySelectorAll(".rail input[type=text],.rail input[type=date],.rail textarea").forEach(e=>e.value="");
+  document.querySelectorAll(".rail select").forEach(e=>e.selectedIndex=0);
+  document.querySelectorAll(".pp").forEach(c=>{c.checked=false;c.dispatchEvent(new Event("change"))});
+  $("#d_from").value=1;$("#d_to").value=1;refresh();
+});
+refresh();
+</script>
+</body>
+</html>
