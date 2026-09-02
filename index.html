@@ -168,9 +168,15 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
     <legend>貼上原始資料</legend>
     <div class="hint">建議附上生日與門診紀錄，AI 會據此推年齡與主診斷。</div>
     <div class="srcbox">
-      <span>上次住院病歷<span class="count"></span></span>
-      <textarea id="src_prev" rows="6" data-src="上次住院病歷 (Previous admission records)"
-        placeholder="上次的 discharge summary、admission note、手術與病理報告…（用來接續病史與治療脈絡）"></textarea>
+      <span>既有病歷<span class="count"></span></span>
+      <select id="prev_kind" style="margin-bottom:4px">
+        <option value="auto">自動判斷（依日期分辨是本次還是上次）</option>
+        <option value="prev">上次住院病歷</option>
+        <option value="curr">本次住院的 admission note</option>
+        <option value="both">兩者都有（混貼）</option>
+      </select>
+      <textarea id="src_prev" rows="7" data-src="既有病歷"
+        placeholder="上次的 discharge summary、手術與病理報告，或本次入院已寫好的 admission note…"></textarea>
     </div>
     <div class="srcbox">
       <span>本次資料（什麼都可以貼）<span class="count"></span></span>
@@ -312,10 +318,19 @@ function caseBlock(){
   t+="- 主診斷與分期：由門診紀錄、病理報告或上次住院病歷推斷\n";
   return t;
 }
+const PREV_KIND={
+  auto:"既有病歷（性質未指定：請依文件中的日期與本次入院日比對，自行判斷哪些屬於本次住院、哪些屬於過去住院）",
+  prev:"上次（過去）住院病歷 — 僅作為病史與 baseline，其中的事件不得寫成本次住院發生",
+  curr:"本次住院已寫好的 ADMISSION NOTE — 屬於本次住院，內容可直接沿用、續寫與更新",
+  both:"混合文件（同時含過去住院紀錄與本次入院 admission note）：請依日期與本次入院日比對後分開處理"
+};
 function sourceBlock(){
   let t="";
   document.querySelectorAll(".srcbox textarea").forEach(ta=>{
-    if(ta.value.trim()) t+=`\n=== ${ta.dataset.src} ===\n${ta.value.trim()}\n`;
+    if(!ta.value.trim()) return;
+    let label=ta.dataset.src;
+    if(ta.id==="src_prev") label+=` — ${PREV_KIND[$("#prev_kind").value]}`;
+    t+=`\n=== ${label} ===\n${ta.value.trim()}\n`;
   });
   return t||"\n（未提供原始文字資料）\n";
 }
@@ -332,7 +347,10 @@ const BASE=`你是台灣醫學中心婦產部婦癌科的資深主治醫師，�
 6. 純文字輸出。不使用 markdown 的 #、*、\`\`\`、粗體或表格語法。條列用 1. 2. 3.。段落標題用首字大寫加冒號。
 7. 每行不超過約 90 字元。
 8. 直接輸出病歷內容，不要開場白、說明或結語。
-9.「上次住院病歷」只用來銜接病史、既往治療與 baseline，不可把上次的事件寫成本次住院發生的事。`;
+9. 每一段資料的標題會註明其性質。若標明為過去住院紀錄，只能用來銜接病史、既往治療與 baseline，其中的事件不得寫成本次住院發生；
+   若標明為本次住院的 admission note，則屬於本次住院，可直接沿用其病史、PE 與 impression 並據以續寫。
+   性質未指定或為混合文件時，以「本次入院日」為分界：入院日當天及之後的事件屬本次住院，之前的屬既往病史。
+   同一份文件內若兩者兼有，須分開處理，不可混為一談。`;
 
 const DX_FORMAT=`診斷條列格式（重要）：每一項診斷先寫病名與分期，若該診斷底下有做過治療（手術、化療、標靶、放療、栓塞、引流等），
 在其下方以縮排箭頭逐條列出，每條含治療內容與日期：
@@ -545,6 +563,7 @@ $("#clearAll").addEventListener("click",()=>{
   document.querySelectorAll(".rail input[type=text],.rail input[type=date],.rail textarea").forEach(e=>e.value="");
   document.querySelectorAll(".rail select").forEach(e=>e.selectedIndex=0);
   document.querySelectorAll(".pp").forEach(c=>{c.checked=false;c.dispatchEvent(new Event("change"))});
+  $("#prev_kind").value="auto";
   $("#d_from").value=1;$("#d_to").value=1;refresh();
 });
 refresh();
