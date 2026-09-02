@@ -50,6 +50,9 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
 .detail{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 12px;margin:0 0 10px;display:none}
 .detail.on{display:block}
 .detail h4{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--accent)}
+.lnk{border:1px solid var(--rule-strong);background:var(--field);color:var(--muted);
+  padding:1px 8px;font-size:11px;border-radius:2px;cursor:pointer;margin-left:6px}
+.lnk:hover{border-color:var(--accent);color:var(--accent)}
 .srcbox{margin-bottom:14px}
 .srcbox > span{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:4px}
 .srcbox .count{font-family:var(--mono);font-size:11px}
@@ -163,18 +166,22 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
 
     <div class="detail" id="p-chemo">
       <h4>化學治療</h4>
-      <label class="f"><span>Regimen</span><input type="text" id="ct_reg" placeholder="Paclitaxel + Carboplatin"></label>
+      <label class="f"><span>Regimen（可留空）</span><input type="text" id="ct_reg" placeholder="Paclitaxel + Carboplatin"></label>
       <div class="row">
         <label class="f"><span>Cycle</span><input type="text" id="ct_cyc" placeholder="C4D1"></label>
         <label class="f"><span>給藥日</span><input type="date" id="ct_date"></label>
       </div>
       <label class="f"><span>Vascular access</span>
         <select id="ct_port"><option value="">—</option><option>Port-A</option><option>PICC</option><option>Peripheral IV</option></select></label>
+      <label class="f" style="margin-bottom:4px"><span>直接貼上化療醫囑／給藥紀錄（上面欄位可全部留空，由此推）
+        <button type="button" class="lnk" data-expand="ct_paste" data-title="化療醫囑">放大</button></span>
+        <textarea id="ct_paste" class="pastebox" rows="8"
+          placeholder="貼上化療醫囑單、pre-med、輸注順序與速率、劑量與體表面積、G-CSF、抗吐藥…"></textarea></label>
     </div>
 
     <div class="detail" id="p-op">
       <h4>手術</h4>
-      <label class="f"><span>術式 Operation</span><input type="text" id="op_name" placeholder="Debulking surgery: TAH + BSO + omentectomy + pelvic LND"></label>
+      <label class="f"><span>術式 Operation（可留空）</span><input type="text" id="op_name" placeholder="Debulking surgery: TAH + BSO + omentectomy + pelvic LND"></label>
       <label class="f"><span>手術日</span><input type="date" id="op_date"></label>
       <label class="f"><span>Approach</span>
         <select id="op_route">
@@ -184,16 +191,28 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
           <option>Single-port robotic (da Vinci SP)</option>
           <option>Vaginal</option><option>Hysteroscopy / D&amp;C</option><option>HIFU</option>
         </select></label>
+      <label class="f" style="margin-bottom:4px"><span>直接貼上手術紀錄／麻醉紀錄／病理報告
+        <button type="button" class="lnk" data-expand="op_paste" data-title="手術紀錄">放大</button></span>
+        <textarea id="op_paste" class="pastebox" rows="10"
+          placeholder="貼上 OP note：indication、findings、procedure、EBL、specimen、frozen/final pathology、complications…"></textarea></label>
     </div>
 
     <div class="detail" id="p-wu">
       <h4>檢查／診斷</h4>
-      <label class="f"><span>安排項目</span><input type="text" id="wu_items" placeholder="CT-guided biopsy, PET-CT"></label>
+      <label class="f"><span>安排項目（可留空）</span><input type="text" id="wu_items" placeholder="CT-guided biopsy, PET-CT"></label>
+      <label class="f" style="margin-bottom:4px"><span>直接貼上檢查報告
+        <button type="button" class="lnk" data-expand="wu_paste" data-title="檢查報告">放大</button></span>
+        <textarea id="wu_paste" class="pastebox" rows="8"
+          placeholder="貼上影像報告、內視鏡報告、切片病理報告全文…"></textarea></label>
     </div>
 
     <div class="detail" id="p-med">
       <h4>內科問題控制</h4>
-      <label class="f"><span>問題</span><input type="text" id="md_prob" placeholder="Febrile neutropenia / cancer pain / malignant ascites"></label>
+      <label class="f"><span>問題（可留空）</span><input type="text" id="md_prob" placeholder="Febrile neutropenia / cancer pain / malignant ascites"></label>
+      <label class="f" style="margin-bottom:4px"><span>直接貼上醫囑／培養報告／用藥紀錄
+        <button type="button" class="lnk" data-expand="md_paste" data-title="內科處置紀錄">放大</button></span>
+        <textarea id="md_paste" class="pastebox" rows="8"
+          placeholder="貼上抗生素醫囑與起訖、血液與尿液培養報告、止痛藥調整、引流紀錄…"></textarea></label>
     </div>
   </fieldset>
 
@@ -402,9 +421,10 @@ document.querySelectorAll("[data-wrap]").forEach(btn=>{
 let edTarget=null;
 const edBox=$("#editor"), edText=$("#ed-text");
 notepadify(edText);
-function openEditor(id){
+function openEditor(id,title){
   edTarget=$("#"+id);
-  $("#ed-title").textContent=edTarget.closest(".srcbox").querySelector("span").childNodes[0].textContent.trim();
+  const box=edTarget.closest(".srcbox");
+  $("#ed-title").textContent=title||(box?box.querySelector("span").childNodes[0].textContent.trim():"編輯");
   edText.value=edTarget.value;
   edText.className="pastebox"+(edTarget.classList.contains("wrapon")?" wrapon":"");
   edText.setAttribute("wrap",edTarget.classList.contains("wrapon")?"soft":"off");
@@ -420,7 +440,9 @@ function closeEditor(){
   }
   edBox.classList.remove("on"); edTarget=null;
 }
-document.querySelectorAll("[data-expand]").forEach(b=>b.addEventListener("click",()=>openEditor(b.dataset.expand)));
+document.querySelectorAll("[data-expand]").forEach(b=>b.addEventListener("click",e=>{
+  e.preventDefault(); openEditor(b.dataset.expand,b.dataset.title);
+}));
 $("#ed-done").addEventListener("click",closeEditor);
 $("#ed-wrap").addEventListener("click",()=>{
   const on=edText.classList.toggle("wrapon");
@@ -542,6 +564,10 @@ function fileParts(){
 /* ---------- context ---------- */
 const purposes=()=>[...document.querySelectorAll(".pp:checked")].map(c=>c.value);
 const line=(l,v)=>v&&String(v).trim()?`${l}: ${String(v).trim()}\n`:"";
+function block(label,id){
+  const v=$("#"+id).value.trim();
+  return v?`\n--- ${label}（原始文件，逐字資料，優先於任何推測）---\n${v}\n--- ${label} 結束 ---\n`:"";
+}
 function caseBlock(){
   const s=state(), p=purposes();
   let t="=== 住院框架（使用者輸入，日期以此為準）===\n";
@@ -551,15 +577,17 @@ function caseBlock(){
   const nm={chemo:"化學治療",surgery:"手術",workup:"檢查／診斷",medical:"內科問題控制"};
   t+="Purpose of this admission: "+(p.length?p.map(x=>nm[x]).join(" + "):"[未指定，請自資料判斷]")+"\n";
   if(p.includes("chemo")){t+="\n[化學治療]\n"+line("Regimen",$("#ct_reg").value)+line("Cycle",$("#ct_cyc").value)
-    +line("Chemotherapy date",fmt($("#ct_date").value))+line("Vascular access",$("#ct_port").value);}
+    +line("Chemotherapy date",fmt($("#ct_date").value))+line("Vascular access",$("#ct_port").value)
+    +block("化療醫囑／給藥紀錄","ct_paste");}
   if(p.includes("surgery")){t+="\n[手術]\n"+line("Operation",$("#op_name").value)+line("Operation date",fmt(s.op))
-    +line("Approach",$("#op_route").value);
+    +line("Approach",$("#op_route").value)+block("手術紀錄／麻醉紀錄／病理報告","op_paste");
     if(s.op&&s.adm) t+=`手術日為住院第 ${diff(s.adm,s.op)+1} 天\n`;}
-  if(p.includes("workup")) t+="\n[檢查／診斷]\n"+line("Planned studies",$("#wu_items").value);
-  if(p.includes("medical")) t+="\n[內科問題控制]\n"+line("Active problem",$("#md_prob").value);
+  if(p.includes("workup")) t+="\n[檢查／診斷]\n"+line("Planned studies",$("#wu_items").value)+block("檢查報告","wu_paste");
+  if(p.includes("medical")) t+="\n[內科問題控制]\n"+line("Active problem",$("#md_prob").value)+block("醫囑／培養報告／用藥紀錄","md_paste");
   t+="\n未填的項目（年齡、性別、診斷、分期、術式、regimen 等）請從下方資料自行推斷：\n";
   t+="- 年齡：由生日與入院日推算，寫成整數歲；找不到生日就留 [age]\n";
   t+="- 主診斷與分期：由門診紀錄、病理報告或上次住院病歷推斷\n";
+  t+="- 標為「原始文件」的區塊是逐字紀錄，術式全名、regimen、劑量、日期、findings 一律以其為準\n";
   return t;
 }
 const PREV_KIND={
@@ -596,7 +624,11 @@ const BASE=`你是台灣醫學中心婦產部婦癌科的資深主治醫師，�
 9. 每一段資料的標題會註明其性質。若標明為過去住院紀錄，只能用來銜接病史、既往治療與 baseline，其中的事件不得寫成本次住院發生；
    若標明為本次住院的 admission note，則屬於本次住院，可直接沿用其病史、PE 與 impression 並據以續寫。
    性質未指定或為混合文件時，以「本次入院日」為分界：入院日當天及之後的事件屬本次住院，之前的屬既往病史。
-   同一份文件內若兩者兼有，須分開處理，不可混為一談。`;
+   同一份文件內若兩者兼有，須分開處理，不可混為一談。
+10. 標示為「原始文件」的區塊（化療醫囑、手術紀錄、檢查報告、培養報告等）是逐字紀錄，具最高優先權：
+    術式全名、approach、findings、EBL、regimen、藥名與劑量、日期、病理結論一律以其為準，
+    與其他敘述衝突時以原始文件為準。可整理句型與縮寫，但不得改動任何實質內容或數值。
+    若原始文件與使用者手動填的欄位不一致，以原始文件為準並照實書寫，不要自行折衷。`;
 
 const DX_FORMAT=`診斷條列格式（重要）：每一項診斷先寫病名與分期，若該診斷底下有做過治療（手術、化療、標靶、放療、栓塞、引流等），
 在其下方以縮排箭頭逐條列出，每條含治療內容與日期：
