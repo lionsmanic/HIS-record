@@ -950,6 +950,9 @@ function plainOut(t){
     .replace(/\n{3,}/g,"\n\n")     // 連續空行壓成一行
     .trim();
 }
+// 對外輸出（剪貼簿、存檔）一律用 Windows CRLF，
+// 因為 HIS（Oracle Forms 等舊式 Windows 元件）不認單獨的 \n，會把整份縮成一段
+function crlf(t){ return plainOut(t).replace(/\n/g,"\r\n"); }
 function finish(el,text){
   el.classList.remove("working");
   const pre=el.querySelector("pre");
@@ -959,13 +962,13 @@ function finish(el,text){
     const sel=String(window.getSelection());
     if(!sel) return;
     e.preventDefault();
-    e.clipboardData.setData("text/plain",plainOut(sel));
+    e.clipboardData.setData("text/plain",crlf(sel));
   });
   const tools=el.querySelector(".tools"); tools.innerHTML="";
   const copy=document.createElement("button"); copy.textContent="複製";
-  copy.title="以純文字複製，貼入 HIS 不帶任何格式";
+  copy.title="以純文字複製（Windows CRLF 換行），貼入 HIS 會保留分行";
   copy.onclick=async()=>{
-    const t=plainOut(pre.innerText);
+    const t=crlf(pre.innerText);
     try{await navigator.clipboard.writeText(t)}catch(e){
       const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}
     copy.textContent="已複製";copy.classList.add("copied");
@@ -975,7 +978,7 @@ function finish(el,text){
   save.onclick=()=>{
     const name=el.querySelector("b").textContent.replace(/[\\/:*?"<>|]/g,"_").trim();
     const a=document.createElement("a");
-    a.href=URL.createObjectURL(new Blob(["\uFEFF"+plainOut(pre.innerText)],{type:"text/plain;charset=utf-8"}));
+    a.href=URL.createObjectURL(new Blob(["\uFEFF"+crlf(pre.innerText)],{type:"text/plain;charset=utf-8"}));
     a.download=`${name}.txt`; a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),3000);
   };
