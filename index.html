@@ -266,15 +266,34 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
       <button class="wide primary" data-doc="discharge"><b>Discharge summary</b><i>出院診斷含 S/P 治療條列、hospital course、追蹤計畫</i></button>
     </div>
 
+    <div class="inline" style="margin-top:14px"><b style="color:var(--ink);font-weight:600">Progress note</b></div>
+
     <div class="inline">
-      <span>每日 SOAP：住院第</span>
+      <span>指定日期</span>
+      <input type="date" id="pn_date" style="flex:1">
+      <span>起連續</span>
+      <input type="number" id="pn_days" min="1" max="14" value="1">
+      <span>天</span>
+    </div>
+    <label class="f" style="margin-bottom:6px">
+      <span>該日資料：醫囑、前一天 note、當日 lab 與報告（可留空，會用上面的總資料）
+        <button type="button" class="lnk" data-expand="pn_paste" data-title="指定日期的當日資料">放大</button></span>
+      <textarea id="pn_paste" class="pastebox" rows="8"
+        placeholder="貼上該日的醫囑變更、TPR/IO、當日抽血報告、影像報告、會診回覆、前一天的 progress note…"></textarea>
+    </label>
+    <div class="gen">
+      <button class="wide primary" data-doc="soapdate"><b>產生指定日期的 progress note</b><i>自動換算 HD#／POD#，含 teaching note</i></button>
+    </div>
+
+    <div class="inline">
+      <span>或依住院天數：第</span>
       <input type="number" id="d_from" min="1" value="1">
       <span>天 到 第</span>
       <input type="number" id="d_to" min="1" value="1">
       <span>天</span>
     </div>
     <div class="gen">
-      <button class="wide" data-doc="soap"><b>產生逐日 progress note</b><i>自動標 HD#／POD#；最後一天若為出院日會寫出院 plan</i></button>
+      <button class="wide" data-doc="soap"><b>產生逐日 progress note</b><i>整段住院一次補齊；最後一天若為出院日會寫出院 plan</i></button>
     </div>
 
     <div class="inline">
@@ -710,6 +729,8 @@ Teaching Note 撰寫原則：
 - 不可杜撰數據或引用不存在的文獻；不寫參考文獻編號。
 
 其他撰寫原則：
+- 若有「指定日期的當日資料」區塊，該日的 S/O/A/P 一律以其內容為第一順位：醫囑變更、TPR/IO、當日 lab 與報告照實寫入，不得被常規範本蓋過。
+- 若資料中含前一天的 progress note，須維持連續性：問題編號沿用、飲食與活動進程接續、抗生素與管路天數往下累加，不可重新起算。
 - 該日有實際資料（progress note、醫囑、lab、會診）必須使用實際資料，不得被範本蓋過。
 - 沒有資料的日期，依本次住院目的與術式（含 approach）的常規進程寫成待填草稿：飲食推進、下床活動、Foley 與 drain 移除時機、止痛降階、抗生素天數、化療給藥與 nadir 追蹤；所有數值一律留 [ ]。
 - 開腹與微創（laparoscopy／robotic／SP）恢復速度不同，須反映在飲食與活動進程。
@@ -720,6 +741,16 @@ weekly:{label:"Interval Summary",ins:`產出一份 INTERVAL / WEEKLY SUMMARY，�
 本文件的重點是「這段期間做了什麼」——重要處置、檢查、治療與其結果的敘述，不是逐日流水帳。
 
 Period covered: 住院天數區間、實際日期、總天數
+
+Narrative Summary:
+  一段連續散文（約 8 到 15 行，不用條列符號、不用箭頭），分三個層次一氣呵成：
+  (1) 前情：兩到四句交代這是什麼樣的病人——年齡、診斷與分期、既往治療與其反應、本次入院的原因與目的，
+      以及本期間「開始之前」的狀態（例如已完成幾次化療、術後第幾天、感染是否已控制）。
+  (2) 本期經過：依時序敘述這段期間實際做了什麼——手術與處置、化療給藥、影像與切片、抗生素與發燒、
+      輸血與營養支持、會診與其建議；每件事帶出為什麼做、結果如何、病人的反應與耐受度。
+  (3) 收尾：一到兩句寫期間結束時的整體狀態與接下來的方向。
+  這段是給接手醫師直接讀的，要能獨立讀懂，不可只是把下面的條列改寫成句子。
+  沒有資料的地方留 [ ]，不得補述未記載的經過。
 
 Significant Events and Interventions:
   依時序敘述，每項寫成一段或一條，含日期、做了什麼、為什麼做、結果如何。涵蓋：
@@ -844,9 +875,27 @@ function fail(el,msg){
 document.querySelectorAll(".gen button").forEach(btn=>{
   if(!btn.dataset.doc) return;
   btn.addEventListener("click",async()=>{
-    const s=state(), doc=btn.dataset.doc, spec=DOCS[doc];
+    const s=state(), doc=btn.dataset.doc, spec=DOCS[doc==="soapdate"?"soap":doc];
     let title=spec.label, extra="";
 
+    if(doc==="soapdate"){
+      if(!s.adm){alert("請先填入院日。");return;}
+      const d0=$("#pn_date").value;
+      if(!d0){alert("請指定要產生的日期。");return;}
+      const hd0=diff(s.adm,d0)+1;
+      if(hd0<1){alert("指定日期早於入院日。");return;}
+      const n=Math.min(14,Math.max(1,+$("#pn_days").value||1));
+      title=n>1?`Progress note　${fmt(d0)} 起 ${n} 天`:`Progress note　${fmt(d0)}`;
+      extra="\n=== 指定產出日期 ===\n";
+      for(let i=0;i<n;i++){
+        const dt=addDays(d0,i), hd=hd0+i, pod=s.op?diff(s.op,dt):null;
+        const last=s.discharged&&dt===s.dc;
+        extra+=`${fmt(dt)}　HD#${hd}`+(pod!==null?`　POD#${pod}`:"")+(last?"　← 出院日，P 段須寫出院決策":"")+"\n";
+      }
+      extra+="只產出上列日期，不要產生其他日期的 note。\n";
+      const day=$("#pn_paste").value.trim();
+      if(day) extra+=`\n--- 指定日期的當日資料（醫囑、TPR/IO、當日 lab 與報告、前一天 note；該日內容以此為第一順位）---\n${day}\n--- 當日資料結束 ---\n`;
+    }
     if(doc==="soap"){
       if(!s.adm){alert("請先填入院日。");return;}
       let a=Math.max(1,+$("#d_from").value||1), b=Math.max(a,+$("#d_to").value||a);
@@ -896,9 +945,11 @@ $("#clearAll").addEventListener("click",()=>{
   document.querySelectorAll(".pp").forEach(c=>{c.checked=false;c.dispatchEvent(new Event("change"))});
   $("#prev_kind").value="auto";
   $("#d_from").value=1;$("#d_to").value=1;
+  $("#pn_date").value=todayISO;$("#pn_days").value=1;
   $("#w_from").value=1;$("#w_to").value=7;delete $("#w_from").dataset.touched;
   refresh();
 });
+$("#pn_date").value=todayISO;
 refresh();
 </script>
 </body>
