@@ -650,7 +650,9 @@ const BASE=`你是台灣醫學中心婦產部婦癌科的資深主治醫師，�
    （例如「腹脹」→ abdominal distension、「解便」→ bowel movement），成品中不得出現任何中文字。
    藥名用學名或原廠英文名；台灣醫院慣用縮寫照用（s/p, TAH-BSO, C/T, POD, NPO, OPD, F/U）。
 6. 純文字輸出。不使用 markdown 的 #、*、\`\`\`、粗體或表格語法。條列用 1. 2. 3.。段落標題用首字大寫加冒號。
-7. 每行不超過約 90 字元。
+7. 斷行規則（非常重要）：段落內絕對不可手動斷行。一個段落就是連續的一整行，不管多長都不換行，
+   由 HIS 自行折行。只有在下列情況才使用換行字元：段落與段落之間（空一行）、段落標題自成一行、
+   條列的每一項各自一行。不要為了版面美觀而在句子中間斷行，也不要限制每行字元數。
 8. 直接輸出病歷內容，不要開場白、說明或結語。
 9. 每一段資料的標題會註明其性質。若標明為過去住院紀錄，只能用來銜接病史、既往治療與 baseline，其中的事件不得寫成本次住院發生；
    若標明為本次住院的 admission note，則屬於本次住院，可直接沿用其病史、PE 與 impression 並據以續寫。
@@ -890,6 +892,29 @@ function card(title){
   el.querySelector("pre").textContent="產生中…";
   out.prepend(el); return el;
 }
+// 把被硬斷行的段落接回一整行（條列、標題、空行不動）
+function unwrapParas(t){
+  const lines=String(t).replace(/\r\n?/g,"\n").split("\n");
+  const isStructural=l=>{
+    const x=l.trim();
+    if(!x) return true;                                   // 空行
+    if(/^([-*•]|\d+[.)]|\(\d+\)|->|→)/.test(x)) return true; // 條列
+    if(/:$/.test(x)) return true;                          // 段落標題
+    if(/^[A-Z][\w\s/&'(),.-]{0,60}:/.test(x)) return true;  // Section:
+    if(/^-{5,}$/.test(x)) return true;                     // 分隔線
+    return false;
+  };
+  const out=[];
+  for(const cur of lines){
+    const prev=out.length?out[out.length-1]:null;
+    // 前一行若是空行、標題或分隔線，就不接；條列項目的續行則可以接回同一項
+    const prevBlocks = prev===null || !prev.trim() || /:$/.test(prev.trim()) || /^-{5,}$/.test(prev.trim());
+    if(!prevBlocks && !isStructural(cur) && prev.trim().length>=55){
+      out[out.length-1]=prev.replace(/\s+$/,"")+" "+cur.trim();
+    } else out.push(cur);
+  }
+  return out.join("\n");
+}
 function plainOut(t){
   return String(t)
     .replace(/\r\n?/g,"\n")
@@ -928,9 +953,21 @@ function finish(el,text){
     a.download=`${name}.txt`; a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),3000);
   };
+  const join=document.createElement("button"); join.textContent="接合斷行";
+  join.title="把段落中間多餘的換行接回一整行，貼進 HIS 才會自然折行";
+  join.onclick=()=>{
+    if(join.classList.contains("copied")){          // 還原
+      pre.textContent=pre.dataset.orig||pre.innerText;
+      join.classList.remove("copied"); join.textContent="接合斷行";
+    }else{
+      pre.dataset.orig=pre.innerText;
+      pre.textContent=plainOut(unwrapParas(pre.innerText));
+      join.classList.add("copied"); join.textContent="已接合";
+    }
+  };
   const del=document.createElement("button"); del.textContent="移除";
   del.onclick=()=>{el.remove(); if(!out.children.length) ph.style.display="";};
-  tools.append(copy,save,del);
+  tools.append(copy,join,save,del);
 }
 function fail(el,msg){
   el.classList.remove("working");el.classList.add("err");
