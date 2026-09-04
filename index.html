@@ -293,6 +293,12 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
       <textarea id="pn_comm" class="pastebox" rows="4"
         placeholder="與誰談（病人／配偶／子女）、談了什麼（病情、病理結果、治療選項、風險、預後、DNR）、對方理解與決定、後續安排…"></textarea>
     </label>
+    <label class="f" style="margin-bottom:6px">
+      <span>Teaching note：先前已教過的主題（可留空，避免重複）
+        <button type="button" class="lnk" data-expand="pn_taught" data-title="已教過的主題">放大</button></span>
+      <textarea id="pn_taught" class="pastebox" rows="3"
+        placeholder="把前幾天已經寫過的 teaching note 主題貼進來（一行一個），例如：POD#1 早期下床與 Foley 移除、POD#2 術後止痛降階…"></textarea>
+    </label>
     <div class="gen">
       <button class="wide primary" data-doc="soapdate"><b>產生指定日期的 progress note</b><i>自動換算 HD#／POD#，含 teaching note</i></button>
     </div>
@@ -759,7 +765,7 @@ A: 條列式，編號 1. 2. 3.，每項一行，格式為 "問題 — 目前狀�
 P: 條列式，對應 A 的編號，每項一行，寫當日處置與 order 變更
 Attending's Round Comment: 主治醫師查房交代事項（僅在有提供該日內容時才出現）
 Communication with Patient and Family: 醫病溝通紀錄（僅在有提供該日內容時才出現）
-Teaching Note: 兩到四點，針對「當天」的臨床情境寫給住院醫師與實習醫師的教學重點
+Teaching Note: 條列 3 到 5 點，每點一行，針對「當天」的臨床情境寫給住院醫師與實習醫師的教學重點
 
 Attending's Round Comment 與 Communication with Patient and Family 的規則：
 這兩段每一天都要出現，不可省略。分兩種情況：
@@ -795,11 +801,32 @@ Attending's Round Comment 與 Communication with Patient and Family 的規則：
 ${PE_DEFAULT}
 
 Teaching Note 撰寫原則：
-- 內容必須扣住該日實際發生的事：POD#1 談早期下床與 Foley 移除的實證理由、POD#3 談 ileus 與 anastomotic leak 的辨識、
-  化療日談 premedication 與 hypersensitivity 處置、nadir 日談 febrile neutropenia 的定義與初始處置、
-  感染控制日談抗生素選擇與降階時機。
-- 每點一句到兩句，寫成可以教的重點，不是流水帳；可帶到婦癌相關的分期、guideline 原則或術式解剖考量。
-- 不可杜撰數據或引用不存在的文獻；不寫參考文獻編號。
+- 每天 3 到 5 點，每點 2 到 3 句，要有實質內容：講清楚機轉或理由、判斷閾值或時機、常見陷阱，
+  而不是只寫「注意傷口感染」這種空話。寫給住院醫師與實習醫師看，程度設定在能直接拿來查房教學。
+- 每點盡量涵蓋不同層次：至少一點是「決策層級」（這件事為什麼影響後續處置），
+  至少一點是「可操作的臨床要訣」（怎麼做、看什麼指標、什麼時候該改變作法）。
+
+【避免重複，這點最重要】
+- 一次產出多天時，每一天必須是完全不同的主題，不可換句話說重講同一件事。
+  請先在心裡替這幾天各分配一個主軸，再各自展開。例如術後連續數日可依序為：
+  POD#0 麻醉恢復與術後即刻風險 → POD#1 ERAS 早期進食與下床的實證基礎 → POD#2 疼痛階梯與 opioid-sparing →
+  POD#3 術後腸阻塞與吻合處滲漏的鑑別 → POD#4 VTE 預防的時程與劑量 → POD#5 出院準備與居家警訊。
+- 若有提供「先前已教過的主題」清單，清單上的主題一律跳過，改談尚未涵蓋的面向。
+- 隨住院天數推進，教學深度要跟著推進：前期偏照護與併發症辨識，中後期進到分期、病理判讀、
+  輔助治療決策、預後與追蹤策略。
+
+【內容要跟得上目前實務】
+- 在與當日情境相關時，帶入近年婦癌臨床的實際議題，例如：
+  卵巢癌的 HRD／BRCA 檢測時機與 PARP inhibitor 維持治療的適應症；neoadjuvant chemotherapy 與 interval debulking
+  的取捨、residual disease 的預後意義；HIPEC 的適用族群。
+  子宮內膜癌的分子分型（POLE、dMMR/MSI-H、p53abn、NSMP）如何改變輔助治療與預後判讀；dMMR 的免疫治療角色；
+  低風險早期病例的 fertility-sparing 條件。
+  子宮頸癌的 sentinel lymph node mapping、LACC trial 之後微創手術的定位、CCRT 併用免疫治療的趨勢。
+  周術期的 ERAS protocol、VTE 風險分層與延長預防、化療的 antiemetic 分層與 G-CSF primary prophylaxis 適應症。
+- 引用指引時只寫指引名稱（如 per NCCN guidelines、per ESGO/ESTRO/ESP recommendations），
+  不得杜撰版本號、文獻編號、頁碼或具體統計數字；不確定的數據就用文字描述趨勢，不要編數值。
+- 病人本身的分期、病理與檢驗結果只能引用資料中確實有的內容；教學可以延伸到一般原則，
+  但不得把一般原則寫成這位病人的已知事實。
 
 其他撰寫原則：
 - 若有「指定日期的當日資料」區塊，該日的 S/O/A/P 一律以其內容為第一順位：醫囑變更、TPR/IO、當日 lab 與報告照實寫入，不得被常規範本蓋過。
@@ -1011,6 +1038,8 @@ function pnExtras(){
   if(a) t+=`\n--- 主治醫師回診意見（原話，請轉為英文病歷用語後放入 Attending's Round Comment 段）---\n${a}\n--- 結束 ---\n`;
   if(c) t+=`\n--- 醫病溝通內容（原話，請轉為英文病歷用語後放入 Communication with Patient and Family 段）---\n${c}\n--- 結束 ---\n`;
   if(t) t+="上述兩項若未指明日期，一律歸入指定的第一天；若內容明確提到某日，放到該日。\n";
+  const g=$("#pn_taught").value.trim();
+  if(g) t+=`\n--- 先前已教過的 teaching note 主題（本次一律不得重複，也不得只換句話說同一件事）---\n${g}\n--- 結束 ---\n`;
   return t;
 }
 document.querySelectorAll(".gen button").forEach(btn=>{
@@ -1087,6 +1116,7 @@ $("#clearAll").addEventListener("click",()=>{
   document.querySelectorAll(".rail select").forEach(e=>e.selectedIndex=0);
   document.querySelectorAll(".pp").forEach(c=>{c.checked=false;c.dispatchEvent(new Event("change"))});
   $("#prev_kind").value="auto";
+  $("#pn_taught").value="";
   $("#d_from").value=1;$("#d_to").value=1;
   $("#pn_date").value=todayISO;$("#pn_days").value=1;
   $("#w_from").value=1;$("#w_to").value=7;delete $("#w_from").dataset.touched;
