@@ -282,13 +282,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
         placeholder="貼上該日的醫囑變更、TPR/IO、當日抽血報告、影像報告、會診回覆、前一天的 progress note…"></textarea>
     </label>
     <label class="f" style="margin-bottom:6px">
-      <span>主治醫師回診意見（可留空）
+      <span>主治醫師回診意見（留空則由當日醫囑自動草擬）
         <button type="button" class="lnk" data-expand="pn_attending" data-title="主治醫師回診意見">放大</button></span>
       <textarea id="pn_attending" class="pastebox" rows="4"
         placeholder="查房交代事項：治療方向、檢查安排、管路與飲食指示、出院時程、須注意的併發症…可用中文寫，會轉成英文病歷用語。"></textarea>
     </label>
     <label class="f" style="margin-bottom:6px">
-      <span>醫病溝通（可留空）
+      <span>醫病溝通（留空則由當日醫囑推敲草擬）
         <button type="button" class="lnk" data-expand="pn_comm" data-title="醫病溝通">放大</button></span>
       <textarea id="pn_comm" class="pastebox" rows="4"
         placeholder="與誰談（病人／配偶／子女）、談了什麼（病情、病理結果、治療選項、風險、預後、DNR）、對方理解與決定、後續安排…"></textarea>
@@ -734,13 +734,35 @@ Communication with Patient and Family: 醫病溝通紀錄（僅在有提供該�
 Teaching Note: 兩到四點，針對「當天」的臨床情境寫給住院醫師與實習醫師的教學重點
 
 Attending's Round Comment 與 Communication with Patient and Family 的規則：
-- 沒有提供對應內容的日期，這兩段整段省略，不要寫空標題，也不得自行編造查房交代或談話內容。
-- 提供的內容若為中文，轉成英文病歷用語，語意與實質內容不得更動、不得補充未講的事。
+這兩段每一天都要出現，不可省略。分兩種情況：
+
+【情況一：使用者有提供該日內容】
+- 以提供的內容為準，中文轉成英文病歷用語，語意與實質內容不得更動，不得補充未講的事。
+
+【情況二：使用者未提供 → 直接草擬】
+- 依「該日的醫囑、order 變更、處置、檢查安排與病程」反推當天查房應該交代與討論的內容，草擬成可用的段落，
+  讓醫師審閱修改即可，不要留白、不要寫 not documented。
+- 草擬的依據必須看得出來自當天的實際 order。舉例：
+  當日開立 clear liquid diet 與 ambulation order → 交代與衛教飲食推進與早期下床；
+  當日移除 Foley → 交代觀察自解小便與殘尿；
+  當日安排 CT 或 CA-125 → 說明檢查目的與何時看報告；
+  當日調整止痛或抗生素 → 說明調整理由與觀察重點；
+  當日 pathology 尚未回報 → 說明報告時程與其對後續治療的影響；
+  預計近日出院 → 交代出院時程、傷口照護與回診安排。
 - Attending's Round Comment 以指示句書寫，例如 Attending Dr. [name] rounded today and advised ...；
-  多項用 1. 2. 3. 條列；若與 P 段重複，P 段保留醫囑層面，此段保留交代與方向。
-- Communication with Patient and Family 須交代：談話對象與關係、談話內容（病情、病理結果、治療選項、風險與預後）、
-  對方的理解與決定、後續安排；結尾寫 Questions were answered and concerns were addressed. 之類的收束句。
-  牽涉知情同意或 DNR 時照實寫明，不得自行推論病人意願。
+  多項用 1. 2. 3. 條列。與 P 段重複時，P 段保留醫囑層面，此段保留交代方向與理由。
+- Communication with Patient and Family 寫成查房時與病人（及在場家屬）談了什麼，
+  依當日 order 與病程推敲，例如 The current condition, today's [order/procedure] and its purpose were
+  explained to the patient ...；結尾用 Questions were answered and concerns were addressed. 收束。
+
+【兩種情況都適用的紅線】
+- 草擬內容只能是「由當日 order 與病程合理推得的說明與衛教」，不得憑空生出未記載的事實：
+  不得寫出具體的病理結果、分期結論、存活數據或預後數字；
+  不得記載知情同意、手術同意書、DNR／DNAR、安寧或拒絕治療的討論與決定；
+  不得寫出病人或家屬的具體決定、情緒反應或同意與否。
+  以上這些只有在使用者提供內容中明確寫到時才可書寫。
+- 談話對象若不確定，寫 the patient [and family]；醫師姓名一律留 [name]。
+- 每段開頭加註 (draft) 以提醒需經醫師確認，例如 Communication with Patient and Family (draft):
 
 ${PE_DEFAULT}
 
