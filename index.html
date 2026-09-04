@@ -281,6 +281,18 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
       <textarea id="pn_paste" class="pastebox" rows="8"
         placeholder="貼上該日的醫囑變更、TPR/IO、當日抽血報告、影像報告、會診回覆、前一天的 progress note…"></textarea>
     </label>
+    <label class="f" style="margin-bottom:6px">
+      <span>主治醫師回診意見（可留空）
+        <button type="button" class="lnk" data-expand="pn_attending" data-title="主治醫師回診意見">放大</button></span>
+      <textarea id="pn_attending" class="pastebox" rows="4"
+        placeholder="查房交代事項：治療方向、檢查安排、管路與飲食指示、出院時程、須注意的併發症…可用中文寫，會轉成英文病歷用語。"></textarea>
+    </label>
+    <label class="f" style="margin-bottom:6px">
+      <span>醫病溝通（可留空）
+        <button type="button" class="lnk" data-expand="pn_comm" data-title="醫病溝通">放大</button></span>
+      <textarea id="pn_comm" class="pastebox" rows="4"
+        placeholder="與誰談（病人／配偶／子女）、談了什麼（病情、病理結果、治療選項、風險、預後、DNR）、對方理解與決定、後續安排…"></textarea>
+    </label>
     <div class="gen">
       <button class="wide primary" data-doc="soapdate"><b>產生指定日期的 progress note</b><i>自動換算 HD#／POD#，含 teaching note</i></button>
     </div>
@@ -717,7 +729,18 @@ S: 病人主觀陳述（疼痛、食慾、排氣排便、噁心、發燒感）
 O: Vital signs [BT/PR/RR/BP]；I/O [ ]；physical examination（依下列預設字眼規則寫齊）；當日 lab／影像
 A: 問題導向評估，編號
 P: 對應每個 problem 的處置與當日 order 變更
+Attending's Round Comment: 主治醫師查房交代事項（僅在有提供該日內容時才出現）
+Communication with Patient and Family: 醫病溝通紀錄（僅在有提供該日內容時才出現）
 Teaching Note: 兩到四點，針對「當天」的臨床情境寫給住院醫師與實習醫師的教學重點
+
+Attending's Round Comment 與 Communication with Patient and Family 的規則：
+- 沒有提供對應內容的日期，這兩段整段省略，不要寫空標題，也不得自行編造查房交代或談話內容。
+- 提供的內容若為中文，轉成英文病歷用語，語意與實質內容不得更動、不得補充未講的事。
+- Attending's Round Comment 以指示句書寫，例如 Attending Dr. [name] rounded today and advised ...；
+  多項用 1. 2. 3. 條列；若與 P 段重複，P 段保留醫囑層面，此段保留交代與方向。
+- Communication with Patient and Family 須交代：談話對象與關係、談話內容（病情、病理結果、治療選項、風險與預後）、
+  對方的理解與決定、後續安排；結尾寫 Questions were answered and concerns were addressed. 之類的收束句。
+  牽涉知情同意或 DNR 時照實寫明，不得自行推論病人意願。
 
 ${PE_DEFAULT}
 
@@ -872,6 +895,14 @@ function fail(el,msg){
     "\n\n檢查項目：\n1. Gemini API Key 是否正確、是否已啟用 Generative Language API\n2. 網路或瀏覽器擴充是否擋住請求\n3. 貼上的資料是否過長（可縮短逐日範圍或刪掉不相關段落）";
 }
 
+function pnExtras(){
+  let t="";
+  const a=$("#pn_attending").value.trim(), c=$("#pn_comm").value.trim();
+  if(a) t+=`\n--- 主治醫師回診意見（原話，請轉為英文病歷用語後放入 Attending's Round Comment 段）---\n${a}\n--- 結束 ---\n`;
+  if(c) t+=`\n--- 醫病溝通內容（原話，請轉為英文病歷用語後放入 Communication with Patient and Family 段）---\n${c}\n--- 結束 ---\n`;
+  if(t) t+="上述兩項若未指明日期，一律歸入指定的第一天；若內容明確提到某日，放到該日。\n";
+  return t;
+}
 document.querySelectorAll(".gen button").forEach(btn=>{
   if(!btn.dataset.doc) return;
   btn.addEventListener("click",async()=>{
@@ -895,6 +926,7 @@ document.querySelectorAll(".gen button").forEach(btn=>{
       extra+="只產出上列日期，不要產生其他日期的 note。\n";
       const day=$("#pn_paste").value.trim();
       if(day) extra+=`\n--- 指定日期的當日資料（醫囑、TPR/IO、當日 lab 與報告、前一天 note；該日內容以此為第一順位）---\n${day}\n--- 當日資料結束 ---\n`;
+      extra+=pnExtras();
     }
     if(doc==="soap"){
       if(!s.adm){alert("請先填入院日。");return;}
@@ -906,6 +938,7 @@ document.querySelectorAll(".gen button").forEach(btn=>{
         const d=dayInfo(n);
         extra+=`HD#${n}　${fmt(d.date)}`+(d.pod!==null?`　POD#${d.pod}`:"")+(d.last?"　← 出院日，P 段須寫出院決策":"")+"\n";
       }
+      extra+=pnExtras();
     }
     if(doc==="weekly"){
       if(!s.adm){alert("請先填入院日。");return;}
