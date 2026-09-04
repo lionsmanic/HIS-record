@@ -890,22 +890,47 @@ function card(title){
   el.querySelector("pre").textContent="產生中…";
   out.prepend(el); return el;
 }
+function plainOut(t){
+  return String(t)
+    .replace(/\r\n?/g,"\n")
+    .replace(/[\u200B-\u200D\uFEFF\u2060]/g,"")
+    .replace(/\u00A0/g," ")
+    .replace(/[ \t]+$/gm,"")       // 去掉每行尾端多餘空白
+    .replace(/\n{3,}/g,"\n\n")     // 連續空行壓成一行
+    .trim();
+}
 function finish(el,text){
   el.classList.remove("working");
   const pre=el.querySelector("pre");
-  pre.textContent=text; pre.setAttribute("contenteditable","true"); pre.setAttribute("spellcheck","false");
+  pre.textContent=plainOut(text); pre.setAttribute("contenteditable","true"); pre.setAttribute("spellcheck","false");
+  // 手動反白 Ctrl+C 時也只給純文字，不帶字體與底色
+  pre.addEventListener("copy",e=>{
+    const sel=String(window.getSelection());
+    if(!sel) return;
+    e.preventDefault();
+    e.clipboardData.setData("text/plain",plainOut(sel));
+  });
   const tools=el.querySelector(".tools"); tools.innerHTML="";
   const copy=document.createElement("button"); copy.textContent="複製";
+  copy.title="以純文字複製，貼入 HIS 不帶任何格式";
   copy.onclick=async()=>{
-    const t=pre.innerText;
+    const t=plainOut(pre.innerText);
     try{await navigator.clipboard.writeText(t)}catch(e){
       const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();}
     copy.textContent="已複製";copy.classList.add("copied");
     setTimeout(()=>{copy.textContent="複製";copy.classList.remove("copied")},1400);
   };
+  const save=document.createElement("button"); save.textContent="存 .txt";
+  save.onclick=()=>{
+    const name=el.querySelector("b").textContent.replace(/[\\/:*?"<>|]/g,"_").trim();
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob(["\uFEFF"+plainOut(pre.innerText)],{type:"text/plain;charset=utf-8"}));
+    a.download=`${name}.txt`; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  };
   const del=document.createElement("button"); del.textContent="移除";
   del.onclick=()=>{el.remove(); if(!out.children.length) ph.style.display="";};
-  tools.append(copy,del);
+  tools.append(copy,save,del);
 }
 function fail(el,msg){
   el.classList.remove("working");el.classList.add("err");
