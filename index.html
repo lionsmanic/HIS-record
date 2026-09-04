@@ -674,15 +674,19 @@ const DX_FORMAT=`診斷條列格式（重要）：每一項診斷先寫病名與
 日期一律 yyyy/mm/dd；資料中沒有的日期寫 [date]，不可自行填。沒有相關治療的診斷就不加箭頭列。`;
 
 const PE_DEFAULT=`Physical examination 一律要寫出來，不可留白、不可寫 not documented：
+- 版面：每個部位各自獨立一行，格式為 "  Region: findings"，前面縮排兩格。
+  絕對不可把多個部位串成一段連續文字，也不可用分號把整段接在一起。
 - 資料中有記載的異常照實寫，並寫在對應部位。
 - 沒有記載的部位，直接草擬該臨床情境下的預設字眼，例如
   General: conscious and alert, afebrile appearance, no acute distress
+  HEENT: pinkish conjunctiva, anicteric sclera, no oral mucositis
   Chest: symmetric expansion, clear breathing sounds bilaterally, no rales or wheezing
   Heart: regular heart beats without murmur
   Abdomen: soft and flat, normoactive bowel sounds, no tenderness or rebounding pain
-  （術後）Wound: dressing dry and clean, no discharge, no dehiscence or surrounding erythema
-  （有引流管）Drain: [amount] mL serosanguinous discharge, no active bleeding
+  Wound: dressing dry and clean, no discharge, no dehiscence or surrounding erythema（術後才寫）
+  Drain: [amount] mL serosanguinous discharge, no active bleeding（有引流管才寫）
   Extremities: freely movable, no pitting edema, no calf tenderness
+  Neurologic: clear consciousness, no focal neurologic deficit
 - 生命徵象與可量化數值一律留 [BT/PR/RR/BP]、[amount] 等方括號讓醫師填。
 - 預設字眼須配合本次住院目的（術後、化療後 nadir、感染控制）調整，不可寫出與已知異常矛盾的正常描述。`;
 
@@ -727,10 +731,17 @@ soap:{label:"Progress Note",ins:`依下方「逐日產出範圍」，為每一�
 每份之間用一行 "----------------------------------------" 分隔。
 每份格式：
 第一行：yyyy/mm/dd  HD#n（若有手術則同行加 POD#n s/p <operation>；手術日當天為 POD#0）
-S: 病人主觀陳述（疼痛、食慾、排氣排便、噁心、發燒感）
-O: Vital signs [BT/PR/RR/BP]；I/O [ ]；physical examination（依下列預設字眼規則寫齊）；當日 lab／影像
-A: 問題導向評估，編號
-P: 對應每個 problem 的處置與當日 order 變更
+S: 條列式，每點一行，開頭用 "- "。寫病人主觀陳述（疼痛部位與程度、食慾與進食、噁心嘔吐、排氣排便、
+   睡眠、發燒畏寒、傷口不適、活動情形），一點只講一件事，通常 3 到 6 點。不要寫成連續散文。
+O: 條列式，每點一行，開頭用 "- "，依下列順序：
+   - Vital signs: BT [ ] / PR [ ] / RR [ ] / BP [ ] mmHg, SpO2 [ ]%
+   - Intake/Output: [ ] / [ ] mL in the past 24 hours
+   - Drain: [amount] mL [character]（無引流管則此行省略）
+   - Physical examination:（下一行起，每個部位各自一行，見下方規則）
+   - Laboratory: 當日抽血，同一行內用逗號分隔，例如 WBC [ ], Hb [ ], Plt [ ], CRP [ ]
+   - Imaging / Reports: 當日影像或報告結論；沒有就省略此行
+A: 條列式，編號 1. 2. 3.，每項一行，格式為 "問題 — 目前狀態與判斷依據"
+P: 條列式，對應 A 的編號，每項一行，寫當日處置與 order 變更
 Attending's Round Comment: 主治醫師查房交代事項（僅在有提供該日內容時才出現）
 Communication with Patient and Family: 醫病溝通紀錄（僅在有提供該日內容時才出現）
 Teaching Note: 兩到四點，針對「當天」的臨床情境寫給住院醫師與實習醫師的教學重點
