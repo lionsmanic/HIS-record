@@ -659,8 +659,10 @@ const BASE=`你是台灣醫學中心婦產部婦癌科的資深主治醫師，�
 7. 斷行規則（非常重要，分兩種情況，不可互相套用）：
    (a) 散文段落（Brief History、Course and Treatment 的敘述段、Present Illness、Hospital Course 等）：
        段落內不可手動斷行，一個段落就是連續的一整行，不管多長都不換行，由 HIS 自行折行。
-   (b) 條列與逐項內容（S、O、A、P、Physical examination 的各部位、Discharge Diagnosis、
-       Active Problems、Plan、Teaching Note 等）：每一項必須各自佔一行，項與項之間要有真正的換行字元。
+   (b) 條列與逐項內容（S、O、A、P、Physical examination 的各部位、Review of System 的各項、
+       Past History、Personal History、Plan 的每一條、Laboratory Findings 的每一行、
+       Discharge Diagnosis、Active Problems、Teaching Note 等）：
+       每一項必須各自佔一行，項與項之間要有真正的換行字元。
        絕對不可把多項串成一行、不可用分號或逗號把條列接成一段文字。
        正確範例（換行處都是真的換行）：
        S:
@@ -712,23 +714,146 @@ const PE_DEFAULT=`Physical examination 一律要寫出來，不可留白、不�
 - 預設字眼須配合本次住院目的（術後、化療後 nadir、感染控制）調整，不可寫出與已知異常矛盾的正常描述。`;
 
 const DOCS={
-admission:{label:"Admission Note",ins:`產出一份完整 ADMISSION NOTE，依序：
-Chief Complaint
-Present Illness（時序敘述本次入院前病程，含腫瘤診斷、分期、既往治療與 response）
-Past Medical History
-Past Surgical History
-Medications on Admission / Allergy
-Family History
-Personal & Social History（smoking, alcohol, betel nut, occupation）
-Obstetric & Gynecologic History（G_P_, menarche, LMP, menopausal status, Pap smear history）
-Review of Systems
-Physical Examination（Vital signs, General, HEENT, Neck, Chest, Heart, Abdomen, Pelvic/bimanual, Extremities, Neurologic）
-Laboratory and Imaging Data
-Impression
-Plan（依本次住院目的展開）
-第一行請寫：<年齡>-year-old <sex>, <主診斷簡述>
-Impression 段落採用下列診斷條列格式。
-${DX_FORMAT}`},
+admission:{label:"Admission Note",ins:`產出一份 ADMISSION NOTE，比照院內既有格式。段落名稱、縮排與條列樣式一律照下方骨架，
+內容依提供的資料填入；資料沒有的欄位留 [ ] 或依該欄位慣例寫否認句，不可整段省略、不可自行增刪段落。
+
+【格式硬性要求】
+- 每一個項目、每一個檢查部位、每一條 plan 都各自佔一行，必須是真正的換行字元。
+  絕對不可把多項用分號或逗號串成一段。只有 Present Illness 是連續散文（段落內不斷行）。
+- 縮排照骨架：主段落標題頂格，子項目縮排 4 格，ROS 的 a~e 子項縮排 3 格。
+
+【輸出骨架】
+
+General Data:
+    Age / Sex: [ ]-year-old female
+    Education / Occupation / Marital status: [ ] / [ ] / [ ]
+    Ambulation: [ambulate freely]
+    Nutrition: [well developed and well nourished]
+    Living status / Primary caregiver: [ ] / [ ]
+    Informant: [the patient herself]
+
+Chief Complaint:
+    <一行，症狀 + 持續時間>
+
+Present Illness:
+    <連續散文，段落內不斷行。依時序寫：基本產科婦科背景（G_P_、LMP、月經週期、痛經、性經驗）、
+    既往疾病與手術、本次症狀的發生與門診檢查經過（含影像與腫瘤指數的日期與數值）、
+    既往治療與反應、本次入院的目的>
+
+Past History:
+    1. <疾病或腫瘤診斷，含分期與既往治療>
+    2. <其他共病>
+    Past Surgical History:
+    1. S/P <術式> on yyyy/mm/dd
+    Obstetric History: G_P_A_, <生產方式與年份；未生育寫 G0P0>
+    Gynecologic History: menarche at [ ] years old, menstrual cycle [ ] days, LMP [ ],
+        dysmenorrhea [ ], contraception [ ], Pap smear [ ], sexual experience [ ]
+    Allergy: <藥物／食物過敏，否認寫 Denied any known drug or food allergy>
+
+Personal History:
+    Smoking: [denied]
+    E-cigarette: [denied]
+    Alcohol: [denied]
+    Betel nut: [denied]
+    Secondhand smoke exposure: [denied]
+    Occupational exposure: [denied]
+    Vaccination: [ ]
+    Current medications: <資料中有的藥；無則 [none]>
+
+Family History:
+    <照資料寫；否認寫 Denied family history of diabetes, hypertension, hyperlipidemia,
+    cardiovascular disease, or malignancy in first-degree relatives>
+
+Review of System:
+    比照院內格式，項目與順序如下，每項一行，資料未提及者寫 (no) 或 (normal)，
+    資料中確有的症狀寫在對應項目並標明。
+    1. General: weakness (no), fatigue (no), anorexia (no), fever (no), insomnia (no)
+    2. Integument: change in color (no), pruritus (no), rash (no), hair loss (no)
+    3. HEENT:
+       a. Head - headache (no), dizziness (no), vertigo (no)
+       b. Eyes - visual acuity (normal), color vision (normal), corrective lenses ( ), photophobia (no), diplopia (no), pain (no)
+       c. Ears - pain (no), discharge (no), hearing loss (no), tinnitus (no)
+       d. Nose - epistaxis (no), discharge (no), stuffiness (no), sense of smell (normal)
+       e. Throat - teeth (normal), gums (normal), dentures (no), taste (normal), soreness (no), hoarseness (no), lump (no)
+    4. Respiratory: cough (no), sputum (no), hemoptysis (no), wheezing (no), dyspnea (no)
+    5. CV: edema (no), chest distress (no), chest pain (no), palpitation (no), intermittent claudication (no), cold limbs (no), cyanosis (no)
+    6. GI: dysphagia (no), nausea (no), vomiting (no), abdominal fullness ( ), change in bowel habit (no), hematemesis (no), melena (no), bloody stool (no)
+    7. GU: urinary frequency (no), hesitancy (no), urgency (no), dribbling (no), incontinence (no), dysuria (no), hematuria (no), nocturia (no), polyuria (no)
+       Female - menarche ( ), menstrual cycle ( ), LMP ( ), vaginal bleeding or discharge ( ), pregnancy (no)
+    8. Metabolic and endocrine: weight change ( ), heat/cold intolerance (no), nervousness (no), sweating (no), polydipsia (no)
+
+Physical Examination:
+    Vital signs: BT [ ] °C / PR [ ] /min / RR [ ] /min / BP [ ]/[ ] mmHg
+    Height: [ ] cm    Body weight: [ ] kg    BMI: [ ]
+    GENERAL APPEARANCE:
+        Fair looking
+    CONSCIOUSNESS:
+        Clear, E4V5M6
+    HEENT:
+        Sclerae: not icteric
+        Conjunctivae: not pale
+        Oral cavity: intact oral mucosa, normal tongue appearance, throat not injected
+    NECK:
+        Supple, no jugular vein engorgement
+        Trachea not deviated, no lymphadenopathy
+    CHEST:
+        Breath pattern: smooth, bilateral symmetric expansion, no use of accessory muscles
+        Breathing sound: bilateral clear and symmetric, no wheezing, no basal crackles
+    HEART:
+        Regular heart beat without audible murmur, no audible S3 or S4
+    ABDOMEN:
+        Soft and flat, no superficial vein engorgement, no umbilicus herniation
+        Liver and spleen not palpable, no shifting dullness
+        No tenderness, no rebounding pain, no muscle guarding, no Murphy's sign
+        Bowel sound: normoactive
+        <若資料有腫塊、腹水、傷口，在此照實加一行>
+    PELVIC EXAMINATION:
+        Speculum: [ ]
+        Bimanual: [ ]
+        （男性病人或資料明確未做時，整段省略）
+    BACK:
+        No knocking pain over bilateral flank area
+    EXTREMITIES:
+        No joint deformity, freely movable, no pitting edema
+        Peripheral pulse: symmetric
+    SKIN:
+        No petechiae or ecchymosis, no abnormal skin rash, skin intact
+    以上為預設字眼；資料中有記載的異常一律覆蓋對應部位，不得寫出與已知異常矛盾的正常描述。
+
+Laboratory Findings:
+    依日期分組，每組一行標日期，其下每行寫項目與數值，例如
+    2026/09/03:
+        WBC [ ], Hb [ ], Plt [ ], Segment [ ], Abs Neutro [ ]
+        BUN [ ], Creatinine [ ], eGFR [ ], Na [ ], K [ ], AST [ ], ALT [ ]
+        Tumor marker: CA-125 [ ]
+    只列資料中確實有的項目與數值，不得補值。影像與病理報告結論另起一行以 Imaging / Pathology: 開頭。
+
+Impression:
+    採用下列診斷條列格式。
+${DX_FORMAT}
+
+Plan:
+    比照院內格式分成四塊，每條一行，開頭用 "- "：
+    Diagnostic:
+    - <術前或診斷用檢查：hemogram、biochemistry、coagulation、chest plain film、EKG、影像、腫瘤指數、
+      切片或細胞學；依本次住院目的展開>
+    - <生命徵象與症狀監測>
+    Therapeutic:
+    - <本次主要治療：手術（寫出完整術式與 approach）或化療（regimen、cycle、給藥日）或抗生素或引流>
+    - <術前準備：NPO、bowel preparation、pre-op antibiotics、pre-op analgesia、anti-emetic、IV fluid；
+      化療則寫 pre-medication、hydration、G-CSF、antiemetic>
+    - <共病與既有用藥的延續處置>
+    - <症狀治療>
+    Measurable goal:
+    - Well explained the risk of surgery and possible complications to the patient and family members.
+    - Well explained the risk of disease progression and the related examinations to the patient and family members.
+    - <本次住院要達成的具體目標，例如 complete the scheduled operation smoothly、
+      complete the first cycle of chemotherapy without major toxicity>
+    Patient education: <疾病相關衛教、用藥指導、術後照護衛教等>
+    Admission care plan explained to: <the patient herself / the patient and her family>
+
+    Plan 各塊至少要有兩條，內容必須對應本次住院目的與資料中實際開立的醫囑，不得只寫空泛句子。
+    資料中若有化療醫囑或手術排程原文，藥名、劑量、途徑、時機一律照抄不得改寫。`},
 
 discharge:{label:"Discharge Summary",ins:`產出一份 DISCHARGE SUMMARY：
 Admission Date / Discharge Date / Hospital Days
