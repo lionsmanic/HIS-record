@@ -267,9 +267,11 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
     <label class="f"><span>OAuth Client ID（只需設定一次，存本機）</span>
       <input type="text" id="g_client" placeholder="xxxxxxxx.apps.googleusercontent.com"></label>
     <div class="gen">
-      <button class="wide primary" id="g_auth"><b>連線 Google</b><i>授權讀取雲端硬碟與寄信；憑證約一小時後需重按</i></button>
+      <button class="wide primary" id="g_auth"><b>連線 Google</b><i>電腦版：彈出視窗授權</i></button>
+      <button class="wide" id="g_auth_redirect"><b>手機模式登入（轉址）</b><i>手機或彈出視窗被擋時改用這個</i></button>
     </div>
     <div class="hint" id="g_state" style="text-align:right">未連線</div>
+    <div class="hint" id="g_redirect_hint" style="word-break:break-all"></div>
     <div class="row">
       <label class="f"><span>資料夾名稱</span><input type="text" id="g_folder" value="HIS-Chart"></label>
       <label class="f" style="flex:0 0 88px;display:flex;align-items:flex-end">
@@ -748,16 +750,55 @@ $("#g_auth").addEventListener("click",()=>{
     client_id:id, scope:GSCOPE,
     callback:r=>{
       if(r.error){gState.textContent="授權失敗："+r.error;return;}
-      gToken=r.access_token;
-      gState.textContent="已連線"; gState.style.color="var(--accent)";
+      setToken(r.access_token,r.expires_in);
     }
   });
   gTokenClient.requestAccessToken();
 });
+// ── 轉址登入（手機用）：不開彈出視窗，直接整頁跳轉後從網址列的 #access_token 取回
+const PAGE_URL=location.origin+location.pathname;
+function setToken(tok,expSec){
+  gToken=tok;
+  try{ sessionStorage.setItem("gTok",JSON.stringify({t:tok,e:Date.now()+(expSec||3500)*1000})); }catch(e){}
+  gState.textContent="已連線"; gState.style.color="var(--accent)";
+}
+(function restoreToken(){
+  // 1) 轉址回來時，token 在網址的 hash 裡
+  if(location.hash.includes("access_token")){
+    const p=new URLSearchParams(location.hash.slice(1));
+    const t=p.get("access_token");
+    if(t){ setToken(t,+p.get("expires_in")||3500); }
+    history.replaceState(null,"",PAGE_URL);
+  }else{
+    // 2) 同一分頁內重新整理，沿用未過期的 token
+    try{
+      const v=JSON.parse(sessionStorage.getItem("gTok")||"null");
+      if(v&&v.e>Date.now()){ gToken=v.t; gState.textContent="已連線"; gState.style.color="var(--accent)"; }
+    }catch(e){}
+  }
+})();
+$("#g_redirect_hint").textContent=
+  "手機模式需先在 Google Console 的「已授權的重新導向 URI」加入：" + PAGE_URL;
+$("#g_auth_redirect").addEventListener("click",()=>{
+  const id=gcEl.value.trim();
+  if(!id){alert("請先填入 OAuth Client ID");return;}
+  const u=new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  u.searchParams.set("client_id",id);
+  u.searchParams.set("redirect_uri",PAGE_URL);
+  u.searchParams.set("response_type","token");
+  u.searchParams.set("scope",GSCOPE);
+  u.searchParams.set("include_granted_scopes","true");
+  u.searchParams.set("prompt","consent");
+  location.href=u.toString();
+});
 async function gFetch(url,opt){
   if(!gToken) throw new Error("尚未連線 Google");
   const res=await fetch(url,{...opt,headers:{...(opt&&opt.headers||{}),Authorization:"Bearer "+gToken}});
-  if(res.status===401){ gToken=""; gState.textContent="憑證過期，請重新連線"; throw new Error("憑證過期，請按「連線 Google」重新授權"); }
+  if(res.status===401){
+    gToken=""; try{sessionStorage.removeItem("gTok")}catch(e){}
+    gState.textContent="憑證過期，請重新連線"; gState.style.color="";
+    throw new Error("憑證過期，請重新按「連線 Google」或「手機模式登入」");
+  }
   if(!res.ok){ let m=""; try{m=(await res.json()).error?.message||"";}catch(e){} throw new Error(`HTTP ${res.status}${m?" — "+m:""}`); }
   return res;
 }
