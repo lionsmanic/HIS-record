@@ -7,6 +7,7 @@
 <title>病歷文書草稿工作台｜Gyn-Onc Note Drafter</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{
   --paper:#FAFAF7; --field:#FFFFFF; --ink:#19232A; --muted:#6B7680;
@@ -257,6 +258,41 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
         accept=".xlsx,.xls,.xlsm,.csv,.tsv,.docx,.pdf,.txt,.md,.json,.log,image/*">
     </div>
     <div class="files" id="filelist"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>批次產出（多位病人）</legend>
+    <div class="hint">一位病人一個檔案（記事本 .txt 最佳，也吃 .docx / .pdf）。檔案裡可以是 admission note、progress note、醫囑、門診紀錄全部混在一起。</div>
+    <div class="drop" id="bdrop">
+      <b>點此選擇，或拖曳多個病人檔案</b>
+      一個檔案 = 一位病人 · .txt .md .docx .pdf
+      <input type="file" id="bfileinput" multiple hidden accept=".txt,.md,.json,.log,.docx,.pdf">
+    </div>
+    <div class="files" id="blist"></div>
+
+    <div class="inline">
+      <span>產出</span>
+      <select id="b_doc" style="flex:1">
+        <option value="soap">Progress note（逐日）</option>
+        <option value="weekly">Weekly / interval summary</option>
+        <option value="discharge">Discharge summary</option>
+        <option value="oncall">Off-service note</option>
+      </select>
+    </div>
+    <div class="inline" id="b_daterow">
+      <span>日期</span>
+      <input type="date" id="b_from" style="flex:1">
+      <span>到</span>
+      <input type="date" id="b_to" style="flex:1">
+    </div>
+    <div class="gen">
+      <button class="wide primary" id="b_run"><b>批次產生</b><i>逐一送出，完成後可單檔下載或整包 .zip</i></button>
+    </div>
+    <div class="mini">
+      <button id="b_zip" disabled>打包下載 .zip</button>
+      <button id="b_clear">清除批次</button>
+    </div>
+    <div class="hint" id="b_status"></div>
   </fieldset>
 
   <fieldset>
@@ -597,6 +633,130 @@ function fileParts(){
   });
   return parts;
 }
+
+/* ---------- 批次產出 ---------- */
+const BATCH=[];
+const bdrop=$("#bdrop"), bfin=$("#bfileinput"), blist=$("#blist"), bstat=$("#b_status");
+bdrop.addEventListener("click",()=>bfin.click());
+bfin.addEventListener("change",()=>{addBatch([...bfin.files]);bfin.value="";});
+["dragenter","dragover"].forEach(ev=>bdrop.addEventListener(ev,e=>{e.preventDefault();bdrop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>bdrop.addEventListener(ev,e=>{e.preventDefault();bdrop.classList.remove("over");}));
+bdrop.addEventListener("drop",e=>{if(e.dataTransfer.files.length) addBatch([...e.dataTransfer.files]);});
+
+async function addBatch(list){
+  for(const file of list){
+    try{
+      const f=await readFile(file);
+      BATCH.push({name:file.name.replace(/\.[^.]+$/,""),file:f,status:"待產生",result:""});
+    }catch(err){
+      BATCH.push({name:file.name,file:null,status:"讀取失敗："+err.message,result:""});
+    }
+  }
+  renderBatch();
+}
+function renderBatch(){
+  blist.innerHTML=BATCH.map((b,i)=>{
+    const bad=!b.file||b.status.startsWith("讀取失敗")||b.status.startsWith("失敗");
+    const done=!!b.result;
+    return `<span class="chip${bad?" bad":""}">
+      <span class="nm">${b.name}</span>
+      <span class="sz">${b.status}</span>
+      ${done?`<button data-bshow="${i}" title="在右側顯示">顯示</button><button data-bdl="${i}" title="下載這一份">↓</button>`:""}
+      <button data-brm="${i}" title="移除">✕</button></span>`;
+  }).join("");
+  blist.querySelectorAll("[data-brm]").forEach(b=>b.addEventListener("click",()=>{BATCH.splice(+b.dataset.brm,1);renderBatch();syncZipBtn();}));
+  blist.querySelectorAll("[data-bdl]").forEach(b=>b.addEventListener("click",()=>dlOne(BATCH[+b.dataset.bdl])));
+  blist.querySelectorAll("[data-bshow]").forEach(b=>b.addEventListener("click",()=>{
+    const it=BATCH[+b.dataset.bshow];
+    finish(card(it.name),it.result);
+    window.scrollTo({top:0,behavior:"smooth"});
+  }));
+  syncZipBtn();
+}
+function syncZipBtn(){ $("#b_zip").disabled=!BATCH.some(b=>b.result); }
+function outName(b){ return `${b.name}_${$("#b_doc").value}.txt`; }
+function dlOne(b){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["\uFEFF"+crlf(b.result)],{type:"text/plain;charset=utf-8"}));
+  a.download=outName(b); a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+}
+function dateList(a,b){
+  const out=[];
+  if(!a) return out;
+  let cur=a, guard=0;
+  const end=b||a;
+  while(cur<=end && guard++<31){ out.push(cur); cur=addDays(cur,1); }
+  return out;
+}
+function batchTask(){
+  const doc=$("#b_doc").value, spec=DOCS[doc];
+  const a=$("#b_from").value, b=$("#b_to").value;
+  let head="";
+  if(doc==="soap"){
+    const ds=dateList(a,b);
+    if(!ds.length) return null;
+    head=`\n=== 要產出的日期 ===\n請為下列每一個日期各產出一份 progress note，順序照列：\n`
+      +ds.map(d=>fmt(d)).join("\n")
+      +`\n每份第一行標 yyyy/mm/dd 與 HD#n：HD# 由資料中的本次入院日期推算（入院當天為 HD#1）。\n`
+      +`若資料中有手術日期，同行加註 POD#n（手術當天為 POD#0）。\n`
+      +`找不到入院日期時，第一行寫 [admission date] 並照樣產出其餘內容。\n`
+      +`若某一天等於資料中的出院日期，該日 P 段須寫出院決策。\n`;
+  }else if(doc==="weekly"){
+    if(!a) return null;
+    head=`\n=== 本次 summary 涵蓋期間 ===\n${fmt(a)} 到 ${fmt(b||a)}\n`
+      +`住院天數區間請由資料中的入院日期推算後寫出。只整理這段期間的事件，之前的僅作背景。\n`;
+  }
+  return {doc,spec,head};
+}
+async function runBatch(){
+  const t=batchTask();
+  if(!t){alert("請先填日期。");return;}
+  const todo=BATCH.filter(b=>b.file);
+  if(!todo.length){alert("請先加入病人檔案。");return;}
+  const btn=$("#b_run"); btn.disabled=true;
+  let ok=0,fail=0;
+  for(let i=0;i<BATCH.length;i++){
+    const b=BATCH[i];
+    if(!b.file) continue;
+    b.status="產生中…"; renderBatch();
+    bstat.textContent=`進行中 ${i+1} / ${BATCH.length}：${b.name}`;
+    try{
+      const parts=[{text:"=== 單一病人的完整病歷資料（記事本內容，可能含 admission note、progress note、醫囑、門診紀錄）==="}];
+      if(b.file.kind==="text") parts.push({text:b.file.text});
+      else{ parts.push({text:`[附件：${b.file.name}]`}); parts.push({inline_data:{mime_type:b.file.mimeType,data:b.file.base64}}); }
+      parts.push({text:t.head+"\n=== 本次任務 ===\n"+t.spec.ins});
+      b.result=plainOut(await callGemini(BASE,parts));
+      b.status="完成"; ok++;
+    }catch(e){
+      b.status="失敗："+e.message; fail++;
+    }
+    renderBatch();
+    await new Promise(r=>setTimeout(r,700));   // 避免觸發速率限制
+  }
+  bstat.textContent=`批次完成：成功 ${ok} 份${fail?`，失敗 ${fail} 份`:""}`;
+  btn.disabled=false;
+}
+$("#b_run").addEventListener("click",runBatch);
+$("#b_doc").addEventListener("change",()=>{
+  $("#b_daterow").style.display=["soap","weekly"].includes($("#b_doc").value)?"":"none";
+});
+$("#b_zip").addEventListener("click",async()=>{
+  const done=BATCH.filter(b=>b.result);
+  if(!done.length) return;
+  if(typeof JSZip==="undefined"){ done.forEach(dlOne); return; }
+  const zip=new JSZip();
+  done.forEach(b=>zip.file(outName(b),"\uFEFF"+crlf(b.result)));
+  const blob=await zip.generateAsync({type:"blob"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`progress_notes_${todayISO}.zip`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+});
+$("#b_clear").addEventListener("click",()=>{
+  if(BATCH.some(b=>b.result)&&!confirm("清除批次？已產生但未下載的內容會消失。"))return;
+  BATCH.length=0; renderBatch(); bstat.textContent="";
+});
 
 /* ---------- context ---------- */
 const purposes=()=>[...document.querySelectorAll(".pp:checked")].map(c=>c.value);
