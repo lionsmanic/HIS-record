@@ -266,10 +266,10 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
     <div class="hint">從雲端硬碟資料夾挑病人檔案 → 批次生成 → 打包寄回信箱。首次使用需填 OAuth Client ID。</div>
     <label class="f"><span>OAuth Client ID（只需設定一次，存本機）</span>
       <input type="text" id="g_client" placeholder="xxxxxxxx.apps.googleusercontent.com"></label>
-    <div class="inline">
-      <button type="button" class="lnk" id="g_auth" style="margin-left:0">連線 Google</button>
-      <span id="g_state" style="flex:1;text-align:right">未連線</span>
+    <div class="gen">
+      <button class="wide primary" id="g_auth"><b>連線 Google</b><i>授權讀取雲端硬碟與寄信；憑證約一小時後需重按</i></button>
     </div>
+    <div class="hint" id="g_state" style="text-align:right">未連線</div>
     <div class="row">
       <label class="f"><span>資料夾名稱</span><input type="text" id="g_folder" value="HIS-Chart"></label>
       <label class="f" style="flex:0 0 88px;display:flex;align-items:flex-end">
@@ -345,6 +345,12 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
         <button type="button" class="lnk" data-expand="pn_paste" data-title="指定日期的當日資料">放大</button></span>
       <textarea id="pn_paste" class="pastebox" rows="8"
         placeholder="貼上該日的醫囑變更、TPR/IO、當日抽血報告、影像報告、會診回覆、前一天的 progress note…"></textarea>
+    </label>
+    <label class="f" style="margin-bottom:6px">
+      <span>今日主訴（留空則由當日醫囑與病程草擬）
+        <button type="button" class="lnk" data-expand="pn_cc" data-title="今日主訴">放大</button></span>
+      <textarea id="pn_cc" class="pastebox" rows="4"
+        placeholder="病人當天的不舒服：疼痛部位與程度、食慾、噁心、排氣排便、發燒、睡眠、活動…可用中文寫，會轉成英文病歷用語。"></textarea>
     </label>
     <label class="f" style="margin-bottom:6px">
       <span>主治醫師回診意見（留空則由當日醫囑自動草擬）
@@ -594,15 +600,24 @@ function readFile(file){
       r.onload=e=>{
         try{
           const wb=XLSX.read(e.target.result,{type:"array"});
-          let out="";
+          let out=""; const sheets={};
           wb.SheetNames.forEach(sn=>{
-            const csv=XLSX.utils.sheet_to_csv(wb.Sheets[sn],{blankrows:false}).trim();
-            if(csv) out+=`【工作表：${sn}】\n${csv}\n\n`;
+            const ws=wb.Sheets[sn];
+            const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
+            const maxCols=rows.reduce((m,r)=>Math.max(m,r.length),0);
+            let body;
+            if(maxCols<=2){
+              // 長文字型分頁（病歷內容）：逐列輸出，不加 CSV 引號與逗號
+              body=rows.map(r=>r.filter(c=>String(c).trim()).join(" ")).join("\n").trim();
+            }else{
+              body=XLSX.utils.sheet_to_csv(ws,{blankrows:false}).trim();
+            }
+            if(body){ sheets[sn]=body; out+=`【分頁：${sn}】\n${body}\n\n`; }
           });
           out=out.trim();
           if(!out) return rej(new Error("沒有可讀取的內容"));
-          if(out.length>40000) out=out.slice(0,40000)+"\n…（表格過長已截斷）";
-          res({kind:"text",name:file.name,text:out,tag:"試算表"});
+          if(out.length>60000) out=out.slice(0,60000)+"\n…（內容過長已截斷）";
+          res({kind:"text",name:file.name,text:out,tag:"試算表",sheets});
         }catch(err){ rej(new Error("Excel 解析失敗："+err.message)); }
       };
       r.onerror=()=>rej(new Error("讀取失敗"));
@@ -661,6 +676,59 @@ function fileParts(){
     }
   });
   return parts;
+}
+
+/* ---------- 四分頁辨識：本次治療 / 今日主訴 / 本次病歷 / 目前病歷 ---------- */
+const SEC_DEF=[
+  {key:"treat", pats:["本次治療","此次治療","住院目的","治療計畫","本次住院目的"],
+   label:"本次治療（此次住院的目的與治療內容：化療 regimen、手術術式與日期、檢查安排、內科處置）"},
+  {key:"today", pats:["今日主訴","當日主訴","主訴","今日症狀","今日不適"],
+   label:"今日主訴（病人當天的不適；這是 progress note 中 S 段的第一順位來源）"},
+  {key:"prev",  pats:["本次病歷","既有病歷","入院病歷","admission"],
+   label:"本次病歷（既有病歷：本次住院的 admission note，或上次住院紀錄）"},
+  {key:"curr",  pats:["目前病歷","本次資料","目前資料","病程","醫囑"],
+   label:"目前病歷（本次住院的原始資料：醫囑、progress note、檢驗與影像報告、門診紀錄）"}
+];
+function matchSec(name){
+  const n=String(name||"").replace(/\s/g,"");
+  for(const d of SEC_DEF) if(d.pats.some(p=>n.includes(p))) return d.key;
+  return null;
+}
+// 從已解析的檔案取出四個區塊；抓不到就整份當作「目前病歷」
+function sectionize(parsed){
+  const secs={};
+  if(parsed.sheets){                       // 試算表：用分頁名稱對應
+    for(const [name,body] of Object.entries(parsed.sheets)){
+      const k=matchSec(name);
+      if(k) secs[k]=(secs[k]?secs[k]+"\n":"")+body;
+      else secs.curr=(secs.curr?secs.curr+"\n":"")+`【${name}】\n${body}`;
+    }
+    return secs;
+  }
+  // 純文字：找出現在單獨一行的分頁標題
+  const lines=String(parsed.text||"").split("\n");
+  let cur=null, buf={};
+  const head=/^[\s【\[（(]*(本次治療|此次治療|住院目的|治療計畫|今日主訴|當日主訴|主訴|今日症狀|本次病歷|既有病歷|入院病歷|目前病歷|本次資料|目前資料)[】\]）)]*\s*[:：]?\s*$/;
+  for(const ln of lines){
+    const m=ln.match(head);
+    if(m){ cur=matchSec(m[1]); buf[cur]=buf[cur]||""; continue; }
+    if(cur) buf[cur]+=ln+"\n"; else { buf._pre=(buf._pre||"")+ln+"\n"; }
+  }
+  const found=Object.keys(buf).filter(k=>k!=="_pre"&&buf[k].trim());
+  if(!found.length) return {curr:parsed.text};
+  for(const k of found) secs[k]=buf[k].trim();
+  if(buf._pre&&buf._pre.trim()) secs.curr=(buf._pre.trim()+"\n"+(secs.curr||"")).trim();
+  return secs;
+}
+function sectionBlocks(secs){
+  let t="";
+  for(const d of SEC_DEF){
+    const v=secs[d.key];
+    if(v&&v.trim()) t+=`\n=== ${d.label} ===\n${v.trim()}\n`;
+  }
+  if(secs.today===undefined||!String(secs.today).trim())
+    t+="\n（今日主訴為空白：S 段請依當日醫囑、處置與病程合理草擬，並在 S 段標註 (draft)）\n";
+  return t;
 }
 
 /* ---------- Google Drive / Gmail ---------- */
@@ -726,7 +794,11 @@ $("#g_load").addEventListener("click",async()=>{
     gStat.textContent=`下載中 ${++n}/${picks.length}：${f.name}`;
     try{
       let url,fname=f.name;
-      if(f.mimeType==="application/vnd.google-apps.document"){
+      if(f.mimeType==="application/vnd.google-apps.spreadsheet"){
+        url=`https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=`+
+            encodeURIComponent("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        if(!/\.\w+$/.test(fname)) fname+=".xlsx";
+      }else if(f.mimeType==="application/vnd.google-apps.document"){
         url=`https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=text/plain`;
         if(!/\.\w+$/.test(fname)) fname+=".txt";
       }else{
@@ -875,9 +947,15 @@ async function runBatch(){
     b.status="產生中…"; renderBatch();
     bstat.textContent=`進行中 ${i+1} / ${BATCH.length}：${b.name}`;
     try{
-      const parts=[{text:"=== 單一病人的完整病歷資料（記事本內容，可能含 admission note、progress note、醫囑、門診紀錄）==="}];
-      if(b.file.kind==="text") parts.push({text:b.file.text});
-      else{ parts.push({text:`[附件：${b.file.name}]`}); parts.push({inline_data:{mime_type:b.file.mimeType,data:b.file.base64}}); }
+      const parts=[{text:"=== 單一病人的完整病歷資料 ==="}];
+      if(b.file.kind==="text"){
+        const secs=sectionize(b.file);
+        const blocks=sectionBlocks(secs);
+        parts.push({text:blocks.trim()?blocks:b.file.text});
+      }else{
+        parts.push({text:`[附件：${b.file.name}]`});
+        parts.push({inline_data:{mime_type:b.file.mimeType,data:b.file.base64}});
+      }
       parts.push({text:t.head+"\n=== 本次任務 ===\n"+t.spec.ins});
       b.result=plainOut(await callGemini(BASE,parts));
       b.status="完成"; ok++;
@@ -1192,6 +1270,10 @@ soap:{label:"Progress Note",ins:`依下方「逐日產出範圍」，為每一�
 第一行：yyyy/mm/dd  HD#n（若有手術則同行加 POD#n s/p <operation>；手術日當天為 POD#0）
 S: 條列式，每點一行，開頭用 "- "。寫病人主觀陳述（疼痛部位與程度、食慾與進食、噁心嘔吐、排氣排便、
    睡眠、發燒畏寒、傷口不適、活動情形），一點只講一件事，通常 3 到 6 點。不要寫成連續散文。
+   若資料中有「今日主訴」，一律以其為第一順位，照實轉成英文病歷用語，不得增刪內容；
+   其餘未提及的項目可依當日病程補上否認句（Denied fever or chills 等）。
+   若「今日主訴」為空白，則依當日醫囑、處置與病程合理草擬，並在段落標題寫 "S: (draft)"，
+   內容只能是由當日 order 與病程推得的合理陳述，不得憑空生出未記載的症狀或數值。
 O: 條列式，每點一行，開頭用 "- "，依下列順序：
    - Vital signs: BT [ ] / PR [ ] / RR [ ] / BP [ ] mmHg, SpO2 [ ]%
    - Intake/Output: [ ] / [ ] mL in the past 24 hours
@@ -1472,6 +1554,9 @@ function fail(el,msg){
 
 function pnExtras(){
   let t="";
+  const cc=$("#pn_cc").value.trim();
+  if(cc) t+=`\n--- 今日主訴（病人當天的不適，S 段的第一順位來源，請轉為英文病歷用語）---\n${cc}\n--- 結束 ---\n`;
+  else t+="\n（未提供今日主訴：S 段請依當日醫囑、處置與病程合理草擬，並在 S 段標註 (draft)）\n";
   const a=$("#pn_attending").value.trim(), c=$("#pn_comm").value.trim();
   if(a) t+=`\n--- 主治醫師回診意見（原話，請轉為英文病歷用語後放入 Attending's Round Comment 段）---\n${a}\n--- 結束 ---\n`;
   if(c) t+=`\n--- 醫病溝通內容（原話，請轉為英文病歷用語後放入 Communication with Patient and Family 段）---\n${c}\n--- 結束 ---\n`;
@@ -1555,6 +1640,7 @@ $("#clearAll").addEventListener("click",()=>{
   document.querySelectorAll(".pp").forEach(c=>{c.checked=false;c.dispatchEvent(new Event("change"))});
   $("#prev_kind").value="auto";
   $("#pn_taught").value="";
+  $("#pn_cc").value="";
   $("#d_from").value=1;$("#d_to").value=1;
   $("#pn_date").value=todayISO;$("#pn_days").value=1;
   $("#w_from").value=1;$("#w_to").value=7;delete $("#w_from").dataset.touched;
