@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{
   --paper:#FAFAF7; --field:#FFFFFF; --ink:#19232A; --muted:#6B7680;
@@ -258,6 +259,34 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
         accept=".xlsx,.xls,.xlsm,.csv,.tsv,.docx,.pdf,.txt,.md,.json,.log,image/*">
     </div>
     <div class="files" id="filelist"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Google 雲端硬碟 / Gmail</legend>
+    <div class="hint">從雲端硬碟資料夾挑病人檔案 → 批次生成 → 打包寄回信箱。首次使用需填 OAuth Client ID。</div>
+    <label class="f"><span>OAuth Client ID（只需設定一次，存本機）</span>
+      <input type="text" id="g_client" placeholder="xxxxxxxx.apps.googleusercontent.com"></label>
+    <div class="inline">
+      <button type="button" class="lnk" id="g_auth" style="margin-left:0">連線 Google</button>
+      <span id="g_state" style="flex:1;text-align:right">未連線</span>
+    </div>
+    <div class="row">
+      <label class="f"><span>資料夾名稱</span><input type="text" id="g_folder" value="HIS-Chart"></label>
+      <label class="f" style="flex:0 0 88px;display:flex;align-items:flex-end">
+        <button type="button" class="lnk" id="g_list" style="margin:0 0 9px 0;width:100%">列出檔案</button></label>
+    </div>
+    <div class="files" id="g_files"></div>
+    <div class="mini">
+      <button id="g_pick_all">全選</button>
+      <button id="g_pick_none">全不選</button>
+      <button id="g_load">載入選取到批次</button>
+    </div>
+    <label class="f" style="margin-top:10px"><span>寄件收件人（你的 Gmail）</span>
+      <input type="text" id="g_mailto" placeholder="you@gmail.com"></label>
+    <div class="gen">
+      <button class="wide" id="g_send" disabled><b>把產出打包寄到信箱</b><i>zip 附件，內含每位病人一個 .txt</i></button>
+    </div>
+    <div class="hint" id="g_status"></div>
   </fieldset>
 
   <fieldset>
@@ -634,6 +663,126 @@ function fileParts(){
   return parts;
 }
 
+/* ---------- Google Drive / Gmail ---------- */
+const GSCOPE="https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send";
+let gToken="", gTokenClient=null, DRIVE=[];
+const gcEl=$("#g_client"), gState=$("#g_state"), gStat=$("#g_status");
+gcEl.value=store.get("gClientId");
+$("#g_mailto").value=store.get("gMailTo");
+gcEl.addEventListener("input",()=>store.set("gClientId",gcEl.value.trim()));
+$("#g_mailto").addEventListener("input",e=>store.set("gMailTo",e.target.value.trim()));
+
+$("#g_auth").addEventListener("click",()=>{
+  const id=gcEl.value.trim();
+  if(!id){alert("請先填入 OAuth Client ID");return;}
+  if(typeof google==="undefined"||!google.accounts?.oauth2){alert("Google 元件尚未載入，請稍候或重新整理");return;}
+  gTokenClient=google.accounts.oauth2.initTokenClient({
+    client_id:id, scope:GSCOPE,
+    callback:r=>{
+      if(r.error){gState.textContent="授權失敗："+r.error;return;}
+      gToken=r.access_token;
+      gState.textContent="已連線"; gState.style.color="var(--accent)";
+    }
+  });
+  gTokenClient.requestAccessToken();
+});
+async function gFetch(url,opt){
+  if(!gToken) throw new Error("尚未連線 Google");
+  const res=await fetch(url,{...opt,headers:{...(opt&&opt.headers||{}),Authorization:"Bearer "+gToken}});
+  if(res.status===401){ gToken=""; gState.textContent="憑證過期，請重新連線"; throw new Error("憑證過期，請按「連線 Google」重新授權"); }
+  if(!res.ok){ let m=""; try{m=(await res.json()).error?.message||"";}catch(e){} throw new Error(`HTTP ${res.status}${m?" — "+m:""}`); }
+  return res;
+}
+$("#g_list").addEventListener("click",async()=>{
+  const name=$("#g_folder").value.trim()||"HIS-Chart";
+  gStat.textContent="搜尋資料夾…";
+  try{
+    const q=`name='${name.replace(/'/g,"\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const fr=await gFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=10`);
+    const folders=(await fr.json()).files||[];
+    if(!folders.length){ gStat.textContent=`找不到名為「${name}」的資料夾`; return; }
+    const fid=folders[0].id;
+    const q2=`'${fid}' in parents and trashed=false`;
+    const r=await gFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q2)}&fields=files(id,name,mimeType,modifiedTime,size)&orderBy=modifiedTime desc&pageSize=200`);
+    DRIVE=((await r.json()).files||[]).filter(f=>f.mimeType!=="application/vnd.google-apps.folder");
+    renderDrive();
+    gStat.textContent=`「${name}」共 ${DRIVE.length} 個檔案`;
+  }catch(e){ gStat.textContent="列出失敗："+e.message; }
+});
+function renderDrive(){
+  $("#g_files").innerHTML=DRIVE.map((f,i)=>{
+    const d=(f.modifiedTime||"").slice(0,10);
+    return `<span class="chip"><input type="checkbox" class="gpick" data-i="${i}" style="width:auto;margin:0">
+      <span class="nm">${f.name}</span><span class="sz">${d}</span></span>`;
+  }).join("");
+}
+$("#g_pick_all").addEventListener("click",()=>document.querySelectorAll(".gpick").forEach(c=>c.checked=true));
+$("#g_pick_none").addEventListener("click",()=>document.querySelectorAll(".gpick").forEach(c=>c.checked=false));
+$("#g_load").addEventListener("click",async()=>{
+  const picks=[...document.querySelectorAll(".gpick:checked")].map(c=>DRIVE[+c.dataset.i]);
+  if(!picks.length){alert("請先勾選檔案");return;}
+  let n=0;
+  for(const f of picks){
+    gStat.textContent=`下載中 ${++n}/${picks.length}：${f.name}`;
+    try{
+      let url,fname=f.name;
+      if(f.mimeType==="application/vnd.google-apps.document"){
+        url=`https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=text/plain`;
+        if(!/\.\w+$/.test(fname)) fname+=".txt";
+      }else{
+        url=`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`;
+      }
+      const blob=await (await gFetch(url)).blob();
+      const file=new File([blob],fname,{type:blob.type||"text/plain"});
+      const parsed=await readFile(file);
+      BATCH.push({name:fname.replace(/\.[^.]+$/,""),file:parsed,status:"待產生",result:""});
+    }catch(e){
+      BATCH.push({name:f.name,file:null,status:"讀取失敗："+e.message,result:""});
+    }
+  }
+  renderBatch();
+  gStat.textContent=`已載入 ${picks.length} 位病人到批次區`;
+});
+
+function b64url(bytes){
+  let s="";
+  const arr=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);
+  for(let i=0;i<arr.length;i+=0x8000) s+=String.fromCharCode.apply(null,arr.subarray(i,i+0x8000));
+  return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+$("#g_send").addEventListener("click",async()=>{
+  const done=BATCH.filter(b=>b.result);
+  if(!done.length){alert("批次區還沒有產出");return;}
+  const to=$("#g_mailto").value.trim();
+  if(!to){alert("請填收件信箱");return;}
+  if(typeof JSZip==="undefined"){alert("打包元件未載入，請重新整理");return;}
+  gStat.textContent="打包中…";
+  try{
+    const zip=new JSZip();
+    done.forEach(b=>zip.file(outName(b),"\uFEFF"+crlf(b.result)));
+    const zb64=await zip.generateAsync({type:"base64"});
+    const fname=`notes_${todayISO}.zip`;
+    const bd="bd_"+Math.random().toString(36).slice(2);
+    const subject=`=?UTF-8?B?${btoa(unescape(encodeURIComponent(`病歷草稿 ${todayISO}（${done.length} 位）`)))}?=`;
+    const body=`附件為 ${done.length} 位病人的病歷草稿，每位一個 .txt（UTF-8, CRLF）。\r\n請審閱修改後再貼入 HIS。\r\n`;
+    const mime=
+      `To: ${to}\r\nSubject: ${subject}\r\nMIME-Version: 1.0\r\n`+
+      `Content-Type: multipart/mixed; boundary="${bd}"\r\n\r\n`+
+      `--${bd}\r\nContent-Type: text/plain; charset="UTF-8"\r\n`+
+      `Content-Transfer-Encoding: base64\r\n\r\n${btoa(unescape(encodeURIComponent(body)))}\r\n`+
+      `--${bd}\r\nContent-Type: application/zip; name="${fname}"\r\n`+
+      `Content-Disposition: attachment; filename="${fname}"\r\n`+
+      `Content-Transfer-Encoding: base64\r\n\r\n${zb64}\r\n--${bd}--`;
+    const enc=new TextEncoder().encode(mime);
+    gStat.textContent="寄送中…";
+    await gFetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({raw:b64url(enc)})
+    });
+    gStat.textContent=`已寄出 ${done.length} 份到 ${to}`;
+  }catch(e){ gStat.textContent="寄送失敗："+e.message; }
+});
+
 /* ---------- 批次產出 ---------- */
 const BATCH=[];
 const bdrop=$("#bdrop"), bfin=$("#bfileinput"), blist=$("#blist"), bstat=$("#b_status");
@@ -673,7 +822,11 @@ function renderBatch(){
   }));
   syncZipBtn();
 }
-function syncZipBtn(){ $("#b_zip").disabled=!BATCH.some(b=>b.result); }
+function syncZipBtn(){
+  const has=BATCH.some(b=>b.result);
+  $("#b_zip").disabled=!has;
+  $("#g_send").disabled=!has;
+}
 function outName(b){ return `${b.name}_${$("#b_doc").value}.txt`; }
 function dlOne(b){
   const a=document.createElement("a");
