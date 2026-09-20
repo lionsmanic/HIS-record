@@ -1306,6 +1306,8 @@ ${DX_FORMAT}
 若尚未出院，最上方註明 "STILL ADMITTED — interim summary as of <今日>"，並將 Condition at Discharge 改為 Current Condition。`},
 
 soap:{label:"Progress Note",ins:`依下方「逐日產出範圍」，為每一天各產出一份 progress note。
+指定幾天就必須產出幾份，一天都不可以漏；若篇幅吃緊，優先把每一天都寫出來，
+再壓縮每份的長度（Teaching Note 可縮到 3 點），不可寫到一半就停。
 每份之間用一行 "----------------------------------------" 分隔。
 每份格式：
 第一行：yyyy/mm/dd  HD#n（若有手術則同行加 POD#n s/p <operation>；手術日當天為 POD#0）
@@ -1400,6 +1402,8 @@ Teaching Note 撰寫原則：
 
 weekly:{label:"Interval Summary",ins:`產出一份 INTERVAL / WEEKLY SUMMARY，僅涵蓋下方指定的期間（期間長度以指定為準，可能少於或多於七天）。
 段落順序固定為：Period covered → Brief History → Course and Treatment → Active Problems → Plan。
+五個段落全部都要寫完，不可只寫前面幾段就停。Brief History 寫完務必接著寫 Course and Treatment，
+不要把篇幅全用在 Brief History 上；真正的重點在 Course and Treatment。
 
 Period covered:
   一行，寫住院天數區間、實際日期與總天數。
@@ -1471,27 +1475,48 @@ async function callGemini(system,parts){
   const key=keyEl.value.trim();
   if(!key) throw new Error("尚未填入 Gemini API Key");
   const url=`https://generativelanguage.googleapis.com/v1beta/models/${modelEl.value}:generateContent?key=${encodeURIComponent(key)}`;
-  const res=await fetch(url,{
-    method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      system_instruction:{parts:[{text:system}]},
-      contents:[{role:"user",parts}],
-      generationConfig:{temperature:0.2,maxOutputTokens:8192}
-    })
-  });
-  if(!res.ok){
-    let d=""; try{ d=(await res.json()).error?.message||""; }catch(e){}
-    throw new Error(`HTTP ${res.status}${d?" — "+d:""}`);
+  const contents=[{role:"user",parts}];
+  let full="", rounds=0, truncated=false;
+
+  while(rounds++<4){
+    const res=await fetch(url,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        system_instruction:{parts:[{text:system}]},
+        contents,
+        generationConfig:{
+          temperature:0.2,
+          maxOutputTokens:32768,              // 病歷動輒數千字，上限要夠
+          thinkingConfig:{thinkingBudget:2048} // 思考 token 也算在 maxOutputTokens 裡，必須設上限
+        }
+      })
+    });
+    if(!res.ok){
+      let d=""; try{ d=(await res.json()).error?.message||""; }catch(e){}
+      throw new Error(`HTTP ${res.status}${d?" — "+d:""}`);
+    }
+    const data=await res.json();
+    const cand=data.candidates?.[0];
+    if(!cand){
+      const b=data.promptFeedback?.blockReason;
+      if(full) break;
+      throw new Error(b?`內容被安全機制阻擋（${b}）`:"模型未回傳內容");
+    }
+    const txt=(cand.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||"").join("");
+    if(!txt.trim()&&!full) throw new Error(`模型回傳空白（finishReason: ${cand.finishReason||"unknown"}）`);
+    full+=txt;
+
+    if(cand.finishReason!=="MAX_TOKENS"){ truncated=false; break; }
+    truncated=true;
+    // 被長度上限切斷 → 請模型無縫接續，最多續寫三次
+    contents.push({role:"model",parts:[{text:txt}]});
+    contents.push({role:"user",parts:[{text:
+      "上一則回覆因長度上限被截斷。請從被截斷的那個字的位置「無縫接續」輸出剩下的內容："+
+      "不要重複已經寫過的任何一句，不要重寫已完成的段落，不要加開場白、說明或分隔線，"+
+      "直接從斷點繼續寫下去，並完成所有尚未產出的日期或段落。"}]});
   }
-  const data=await res.json();
-  const cand=data.candidates?.[0];
-  if(!cand){
-    const b=data.promptFeedback?.blockReason;
-    throw new Error(b?`內容被安全機制阻擋（${b}）`:"模型未回傳內容");
-  }
-  const txt=(cand.content?.parts||[]).map(p=>p.text||"").join("").trim();
-  if(!txt) throw new Error(`模型回傳空白（finishReason: ${cand.finishReason||"unknown"}）`);
-  return txt;
+  if(truncated) full+="\n\n[內容過長，已達續寫上限，請縮短日期區間或減少貼上的資料後重跑]";
+  return full.trim();
 }
 
 /* ---------- 產出 ---------- */
