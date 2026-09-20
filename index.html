@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="病歷草稿">
+<meta name="theme-color" content="#19232A">
+<link rel="manifest" href="manifest.webmanifest">
 <title>病歷文書草稿工作台｜Gyn-Onc Note Drafter</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -981,10 +989,12 @@ async function runBatch(){
   const todo=BATCH.filter(b=>b.file);
   if(!todo.length){alert("請先加入病人檔案。");return;}
   const btn=$("#b_run"); btn.disabled=true;
-  let ok=0,fail=0;
+  await wakeOn();
+  let ok=0,fail=0,skip=0;
   for(let i=0;i<BATCH.length;i++){
     const b=BATCH[i];
     if(!b.file) continue;
+    if(b.result){ skip++; continue; }          // 已完成的不重跑，中斷後可直接續跑
     b.status="產生中…"; renderBatch();
     bstat.textContent=`進行中 ${i+1} / ${BATCH.length}：${b.name}`;
     try{
@@ -1006,7 +1016,8 @@ async function runBatch(){
     renderBatch();
     await new Promise(r=>setTimeout(r,700));   // 避免觸發速率限制
   }
-  bstat.textContent=`批次完成：成功 ${ok} 份${fail?`，失敗 ${fail} 份`:""}`;
+  wakeOff();
+  bstat.textContent=`批次完成：成功 ${ok} 份${fail?`，失敗 ${fail} 份（再按一次只會重跑失敗的）`:""}${skip?`，沿用先前完成 ${skip} 份`:""}`;
   btn.disabled=false;
 }
 $("#b_run").addEventListener("click",runBatch);
@@ -1471,6 +1482,25 @@ Suggestion — 對應每個編號，寫具體處置與追蹤（檢查、藥物�
 };
 
 /* ---------- Gemini API ---------- */
+/* ---------- 產生期間保持螢幕開啟（手機待機會中斷連線）---------- */
+let _wl=null, _wlCount=0;
+async function wakeOn(){
+  _wlCount++;
+  if(_wl||!("wakeLock" in navigator)) return;
+  try{
+    _wl=await navigator.wakeLock.request("screen");
+    _wl.addEventListener("release",()=>{_wl=null;});
+  }catch(e){ _wl=null; }
+}
+function wakeOff(){
+  _wlCount=Math.max(0,_wlCount-1);
+  if(_wlCount===0&&_wl){ try{_wl.release()}catch(e){} _wl=null; }
+}
+// 切回前景時若仍在產生中，重新取得鎖（iOS 切走會自動釋放）
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible"&&_wlCount>0&&!_wl) wakeOn().then(()=>_wlCount--);
+});
+
 async function callGemini(system,parts){
   const key=keyEl.value.trim();
   if(!key) throw new Error("尚未填入 Gemini API Key");
@@ -1683,7 +1713,10 @@ document.querySelectorAll(".gen button").forEach(btn=>{
       parts.push(...fileParts());
     }
     parts.push({text:"\n=== 本次任務 ===\n"+spec.ins});
-    try{finish(el,await callGemini(BASE,parts));}catch(e){fail(el,e.message);}
+    await wakeOn();
+    try{finish(el,await callGemini(BASE,parts));}
+    catch(e){fail(el,e.message);}
+    finally{wakeOff();}
   });
 });
 
