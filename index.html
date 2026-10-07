@@ -312,10 +312,12 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
     <div class="inline">
       <span>產出</span>
       <select id="b_doc" style="flex:1">
+        <option value="admission">Admission note</option>
         <option value="soap">Progress note（逐日）</option>
         <option value="weekly">Weekly / interval summary</option>
         <option value="discharge">Discharge summary</option>
-        <option value="oncall">Off-service note</option>
+        <option value="oncall">Off-service / Transfer note</option>
+        <option value="handover">中文交班內容</option>
       </select>
     </div>
     <div class="inline" id="b_daterow">
@@ -407,7 +409,8 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
     </div>
 
     <div class="gen" style="margin-top:6px">
-      <button data-doc="oncall"><b>Off-service note</b><i>交班／轉床摘要</i></button>
+      <button data-doc="oncall"><b>Off-service / Transfer note</b><i>交班、轉床、轉科摘要</i></button>
+      <button data-doc="handover"><b>中文交班內容</b><i>值班交班用，中文＋英文術語</i></button>
       <button data-doc="history"><b>History 區塊</b><i>PH / FH / OB-GYN / social</i></button>
       <button data-doc="peros"><b>PE + ROS</b><i>預設模板＋異常帶入</i></button>
       <button data-doc="impression"><b>Impression &amp; Suggestion</b><i>問題導向清單</i></button>
@@ -948,7 +951,12 @@ function syncZipBtn(){
   $("#b_zip").disabled=!has;
   $("#g_send").disabled=!has;
 }
-function outName(b){ return `${b.name}_${$("#b_doc").value}.txt`; }
+const DOC_SUFFIX={admission:"admission",soap:"progress",weekly:"weekly",
+  discharge:"discharge",oncall:"transfer",handover:"交班"};
+function outName(b){
+  const d=$("#b_doc").value;
+  return `${b.name}_${DOC_SUFFIX[d]||d}.txt`;
+}
 function dlOne(b){
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob(["\uFEFF"+crlf(b.result)],{type:"text/plain;charset=utf-8"}));
@@ -1098,6 +1106,7 @@ const BASE=`你是台灣醫學中心婦產部婦癌科的資深主治醫師，�
 5. 輸出一律全英文：段落標題、敘述、評估與計畫全部使用英文醫學書寫。原始資料若為中文，一律轉譯為標準英文醫學用語
    （例如「腹脹」→ abdominal distension、「解便」→ bowel movement），成品中不得出現任何中文字。
    藥名用學名或原廠英文名；台灣醫院慣用縮寫照用（s/p, TAH-BSO, C/T, POD, NPO, OPD, F/U）。
+   唯一例外：任務明確指定以中文書寫的文件（如「中文交班內容」），以該任務的語言規定為準。
 6. 純文字輸出。不使用 markdown 的 #、*、\`\`\`、粗體或表格語法。條列用 1. 2. 3.。段落標題用首字大寫加冒號。
 7. 斷行規則（非常重要，分兩種情況，不可互相套用）：
    (a) 散文段落（Brief History、Course and Treatment 的敘述段、Present Illness、Hospital Course 等）：
@@ -1467,17 +1476,67 @@ Plan:
   對應 Active Problems 的編號逐項寫後續處置：檢查與追蹤時程、藥物與治療調整、會診、
   管路與復健、出院規劃或下一次治療時程、需與病人及家屬討論的決策點。`},
 
-oncall:{label:"Off-service / Sign-out Note",ins:`產出交班摘要：
-Patient summary（一到兩句：年齡、診斷、分期、入院目的、目前住院第幾天／POD）
-Course to date（三到六點）
-Current physical examination（依下列預設字眼規則寫齊，不可省略）
-Active problems and current management
-Lines, drains, airway（無則 none）
-Code status / allergy（無資料 [ ]）
-Anticipated issues and what to do（寫成 if-then，例如 if fever > 38.3 → blood culture x2 + ...）
-To-do / pending results
+oncall:{label:"Off-service / Transfer Note",ins:`產出一份交班／轉床用的 OFF-SERVICE / TRANSFER NOTE，寫給接手的醫師看，段落如下：
+Patient Summary（一到兩句：年齡、診斷與分期、入院目的、目前住院第幾天／POD）
+Reason for Transfer or Sign-out（轉床、轉科、轉院或換班的理由；資料未載明寫 [reason]）
+Course to Date（三到六點，條列，依時序寫本次住院的重要事件與處置）
+Current Physical Examination（依下列預設字眼規則寫齊，不可省略）
+Active Problems and Current Management（編號，每項寫問題與目前處置）
+Medications（目前使用中的重要用藥：抗生素第幾天、止痛、抗凝血、化療支持性用藥；無則 [see order sheet]）
+Lines, Drains, Airway（無則 none）
+Code Status / Allergy（無資料 [ ]）
+Anticipated Issues and What to Do（寫成 if-then，例如 if fever > 38.3 → blood culture x2 + ...，至少三條）
+To-do / Pending Results（待追的報告與待辦事項，含預計時間）
 
 ${PE_DEFAULT}`},
+
+handover:{label:"中文交班內容",ins:`產出一份給台灣醫院同仁口頭或書面交班用的「中文交班內容」。
+
+【語言規定（本文件專用，覆蓋全英文規則）】
+- 敘述與段落標題用繁體中文，醫學專有名詞、藥名、術式、檢驗項目、分期一律保留英文原文，
+  例如「卵巢癌 high grade serous carcinoma，FIGO IIIC，s/p interval debulking surgery」、
+  「發燒時先抽 blood culture 兩套」、「Port-A 通暢」。不要把英文醫學名詞硬翻成中文。
+- 語氣是同事之間交班的實務口吻，簡短、好唸、能照著講；不要寫成正式病歷文體，也不要客套。
+
+【輸出格式】
+段落標題用【】括起來自成一行，其下每條一行、開頭用 "- "。沒有內容的段落整段省略。
+依序輸出下列段落：
+
+【病人與診斷】
+- 一到兩行：年齡、診斷與分期、既往治療（第幾次化療、何時開什麼刀）、目前住院第幾天／POD 第幾天
+
+【這次入院做什麼】
+- 本次住院目的與目前進度（例如：排 interval debulking surgery，已完成，現在術後第 3 天）
+
+【目前狀況】
+- 意識、活動、飲食、疼痛控制、排氣排便、傷口
+- 生命徵象趨勢（有發燒、血壓偏低等要特別點出；數值沒有的留 [ ]）
+
+【今天做了什麼】
+- 當天的重要處置、檢查、藥物調整、會診，各一條
+
+【管路與用藥】
+- 管路：Port-A、Foley、drain、CVC 等，含放置日期與目前狀態；沒有就寫「無特殊管路」
+- 重要用藥：抗生素（第幾天、什麼藥）、止痛、抗凝血、輸血；沒有就省略
+
+【要注意的事】
+- 最重要的一段，至少三條，寫成「如果…就…」的具體指示，讓值班的人照著做
+- 例如：如果發燒 > 38.3，先抽 blood culture 兩套加 urine culture，再 call 總醫師
+- 例如：drain 量如果一天超過 [ ] mL 或變成鮮紅色，通知主治
+- 要寫出這位病人特有的風險（術後出血、neutropenia、腸阻塞、過敏病史），不要寫通用廢話
+
+【待辦與追蹤】
+- 待回的報告（病理、培養、影像）與預計回報時間
+- 明天要做的事（抽血、換藥、拔管、安排檢查、辦出院）
+
+【家屬與告知】
+- 主要聯絡人與已說明到什麼程度；資料沒有就寫「[家屬聯絡人]」
+- 涉及 DNR、手術同意書、病理結果告知的，只有資料中明確寫到才可書寫，不得自行推測
+
+【撰寫紅線】
+- 只能用提供的資料，不得杜撰數值、藥名、劑量、日期或病理結果；沒有的一律留 [ ]。
+- 【要注意的事】的 if-then 可以依臨床常規合理草擬，但觸發條件與處置要具體可執行。
+- 全文控制在 30 行以內，一條一行，不要長段落。`},
 
 history:{label:"History 區塊",ins:`只產出以下段落，可直接貼入 HIS 各欄位：
 Past Medical History
@@ -1589,6 +1648,7 @@ function unwrapParas(t){
     if(/^([-*•]|\d+[.)]|\(\d+\)|->|→)/.test(x)) return true; // 條列
     if(/:$/.test(x)) return true;                          // 段落標題
     if(/^[A-Z][\w\s/&'(),.-]{0,60}:/.test(x)) return true;  // Section:
+    if(/^【.*】\s*$/.test(x)) return true;                  // 中文交班的【段落標題】
     if(/^-{5,}$/.test(x)) return true;                     // 分隔線
     return false;
   };
