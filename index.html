@@ -143,10 +143,11 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-
   <div class="spacer"></div>
   <div class="keybox">
     <input type="password" id="apikey" placeholder="Gemini API Key" autocomplete="off">
-    <select id="model">
-      <option value="gemini-2.5-flash">2.5 Flash</option>
+    <select id="model" title="填入金鑰後會自動抓取你帳號目前可用的模型，Pro 排在最前面">
+      <option value="gemini-3.1-pro-preview">3.1 Pro</option>
+      <option value="gemini-3.8-flash">3.8 Flash</option>
+      <option value="gemini-3.5-flash-lite">3.5 Flash-Lite</option>
       <option value="gemini-2.5-pro">2.5 Pro</option>
-      <option value="gemini-2.5-flash-lite">2.5 Flash-Lite</option>
     </select>
     <span class="keystate" id="keystate">未設定金鑰</span>
   </div>
@@ -453,14 +454,53 @@ const store={get(k){try{return localStorage.getItem(k)||""}catch(e){return""}},s
 const $=s=>document.querySelector(s);
 const keyEl=$("#apikey"),modelEl=$("#model"),keyState=$("#keystate");
 keyEl.value=store.get("geminiApiKey");
-modelEl.value=store.get("geminiModel")||"gemini-2.5-flash";
+const savedModel=store.get("geminiModel");
+if(savedModel&&[...modelEl.options].some(o=>o.value===savedModel)) modelEl.value=savedModel;
 function refreshKeyState(){
   if(keyEl.value.trim()){keyState.textContent="金鑰已存在本機";keyState.className="keystate ok";}
   else{keyState.textContent="未設定金鑰";keyState.className="keystate";}
 }
-keyEl.addEventListener("input",()=>{store.set("geminiApiKey",keyEl.value.trim());refreshKeyState()});
+let keyTimer=null;
+keyEl.addEventListener("input",()=>{
+  store.set("geminiApiKey",keyEl.value.trim());refreshKeyState();
+  clearTimeout(keyTimer); keyTimer=setTimeout(loadModels,800);
+});
 modelEl.addEventListener("change",()=>store.set("geminiModel",modelEl.value));
 refreshKeyState();
+
+/* ---------- 自動抓取帳號目前可用的模型（寫死清單會隨 Google 改版過時）---------- */
+function modelRank(id){
+  const v=parseFloat((id.match(/gemini-(\d+(?:\.\d+)?)/)||[])[1]||0);
+  const tier=/pro/.test(id)?3:/flash-?lite/.test(id)?1:/flash/.test(id)?2:0;
+  return tier*1000+v*10;   // 先看等級再看版號：病歷要的是 Pro 的指令遵循，不是版號大
+}
+function prettyModel(id){
+  return id.replace(/^gemini-/,"")
+           .replace(/-preview.*$/,"")
+           .replace(/-\d{3,}$/,"")
+           .replace(/-/g," ")
+           .replace(/\b(pro|flash|lite)\b/g,m=>m[0].toUpperCase()+m.slice(1))
+         + (/preview|exp/.test(id)?"（preview）":"");
+}
+async function loadModels(){
+  const key=keyEl.value.trim(); if(!key) return;
+  try{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(key)}`);
+    if(!r.ok) return;                      // 抓不到就沿用寫死的清單，不打擾使用者
+    const ids=((await r.json()).models||[])
+      .filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent"))
+      .map(m=>String(m.name||"").replace(/^models\//,""))
+      .filter(id=>/^gemini-/.test(id) && !/embedding|aqa|image|tts|audio|live|native-audio|thinking-exp/i.test(id));
+    if(ids.length<2) return;
+    ids.sort((a,b)=>modelRank(b)-modelRank(a));
+    const want=store.get("geminiModel")||modelEl.value;
+    modelEl.innerHTML=ids.map(id=>`<option value="${id}">${prettyModel(id)}</option>`).join("");
+    modelEl.value=ids.includes(want)?want:ids[0];   // 存的模型若已下架，改用排序最前的
+    store.set("geminiModel",modelEl.value);
+    modelEl.title=`已自動載入 ${ids.length} 個可用模型，Pro 排在最前面`;
+  }catch(e){ /* 離線或被擋就沿用寫死清單 */ }
+}
+loadModels();
 
 /* ---------- 日期 ---------- */
 const todayISO=new Date().toISOString().slice(0,10);
@@ -1579,6 +1619,7 @@ document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible"&&_wlCount>0&&!_wl) wakeOn().then(()=>_wlCount--);
 });
 
+let THINK_MODE="budget";   // budget → level → off，依 API 回應自動降級，整個 session 記住
 async function callGemini(system,parts){
   const key=keyEl.value.trim();
   if(!key) throw new Error("尚未填入 Gemini API Key");
@@ -1587,20 +1628,25 @@ async function callGemini(system,parts){
   let full="", rounds=0, truncated=false;
 
   while(rounds++<4){
+    const cfg={
+      temperature:0.2,
+      maxOutputTokens:32768                   // 病歷動輒數千字，上限要夠
+    };
+    // 思考 token 也算進 maxOutputTokens，設上限才不會正文被截斷；
+    // 不同世代的參數名不同，被拒就自動改用另一種、再不行就整個拿掉
+    if(THINK_MODE==="budget") cfg.thinkingConfig={thinkingBudget:2048};
+    else if(THINK_MODE==="level") cfg.thinkingConfig={thinkingLevel:"low"};
+
     const res=await fetch(url,{
       method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        system_instruction:{parts:[{text:system}]},
-        contents,
-        generationConfig:{
-          temperature:0.2,
-          maxOutputTokens:32768,              // 病歷動輒數千字，上限要夠
-          thinkingConfig:{thinkingBudget:2048} // 思考 token 也算在 maxOutputTokens 裡，必須設上限
-        }
-      })
+      body:JSON.stringify({system_instruction:{parts:[{text:system}]},contents,generationConfig:cfg})
     });
     if(!res.ok){
       let d=""; try{ d=(await res.json()).error?.message||""; }catch(e){}
+      if(res.status===400&&/thinking/i.test(d)&&THINK_MODE!=="off"){
+        THINK_MODE = THINK_MODE==="budget" ? "level" : "off";
+        rounds--; continue;                   // 換一種思考參數重試，不算一次續寫
+      }
       throw new Error(`HTTP ${res.status}${d?" — "+d:""}`);
     }
     const data=await res.json();
